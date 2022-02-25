@@ -10,7 +10,6 @@ use super::{broadcast_my_swap_status, broadcast_swap_message_every, check_other_
             TransactionIdentifier, WAIT_CONFIRM_INTERVAL};
 use crate::mm2::lp_dispatcher::{DispatcherContext, LpEvents};
 use crate::mm2::lp_network::subscribe_to_topic;
-use crate::mm2::lp_ordermatch::{MakerOrderBuilder, OrderConfirmationsSettings};
 use crate::mm2::MM_VERSION;
 use bigdecimal::BigDecimal;
 use bitcrypto::dhash160;
@@ -22,6 +21,7 @@ use common::privkey::key_pair_from_secret;
 use common::{bits256, executor::Timer, mm_ctx::MmArc, mm_number::MmNumber, now_ms, DEX_FEE_ADDR_RAW_PUBKEY};
 use futures::{compat::Future01CompatExt, select, FutureExt};
 use keys::KeyPair;
+use lp_ordermatch::{MakerOrderBuilder, OrderConfirmationsSettings};
 use parking_lot::Mutex as PaMutex;
 use primitives::hash::H264;
 use rand::Rng;

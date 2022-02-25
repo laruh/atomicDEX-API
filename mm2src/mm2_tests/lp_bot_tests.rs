@@ -6,8 +6,8 @@ use serde_json::Value as Json;
 
 mod tests {
     use super::*;
-    use crate::mm2::lp_ordermatch::KMD_PRICE_ENDPOINT;
     use http::HeaderMap;
+    use lp_ordermatch::KMD_PRICE_ENDPOINT;
 
     #[test]
     #[cfg(not(target_arch = "wasm32"))]

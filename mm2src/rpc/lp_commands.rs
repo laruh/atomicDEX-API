@@ -30,9 +30,9 @@ use serde_json::{self as json, Value as Json};
 use std::borrow::Cow;
 
 use crate::mm2::lp_dispatcher::{dispatch_lp_event, StopCtxEvent};
-use crate::mm2::lp_ordermatch::{cancel_orders_by, CancelBy};
 use crate::mm2::lp_swap::active_swaps_using_coin;
 use crate::mm2::MmVersionResult;
+use lp_ordermatch::{cancel_orders_by, CancelBy};
 
 /// Attempts to disable the coin
 pub async fn disable_coin(ctx: MmArc, req: Json) -> Result<Response<Vec<u8>>, String> {

@@ -1,0 +1,16 @@
+[package]
+name = "lp_ordermatch"
+version = "0.1.0"
+authors = ["Artem Pikulin <ortgma@gmail.com>"]
+edition = "2018"
+
+[lib]
+path = "lp_ordermatch.rs"
+
+[dependencies]
+async-trait = "0.1"
+bitcrypto = { path = "../mm2_bitcoin/crypto" }
+blake2 = "0.9.1"
+coins = { path = "../coins" }
+common = { path = "../common" }
+crypto = { path = "../crypto" }

@@ -186,8 +186,8 @@ pub async fn best_orders_rpc(ctx: MmArc, req: Json) -> Result<Response<Vec<u8>>,
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod best_orders_test {
     use super::*;
-    use crate::mm2::lp_ordermatch::ordermatch_tests::make_random_orders;
-    use crate::mm2::lp_ordermatch::{OrderbookItem, TrieProof};
+    use lp_ordermatch::ordermatch_tests::make_random_orders;
+    use lp_ordermatch::{OrderbookItem, TrieProof};
     use std::iter::FromIterator;
 
     #[test]

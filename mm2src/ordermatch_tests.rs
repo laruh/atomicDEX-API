@@ -1,6 +1,5 @@
 use super::*;
 use crate::mm2::lp_network::P2PContext;
-use crate::mm2::lp_ordermatch::new_protocol::{MakerOrderUpdated, PubkeyKeepAlive};
 use coins::{MmCoin, TestCoin};
 use common::{block_on,
              executor::spawn,
@@ -8,6 +7,7 @@ use common::{block_on,
              privkey::key_pair_from_seed};
 use db_common::sqlite::rusqlite::Connection;
 use futures::{channel::mpsc, lock::Mutex as AsyncMutex, StreamExt};
+use lp_ordermatch::new_protocol::{MakerOrderUpdated, PubkeyKeepAlive};
 use mm2_libp2p::atomicdex_behaviour::AdexBehaviourCmd;
 use mm2_libp2p::{decode_message, PeerId};
 use mocktopus::mocking::*;

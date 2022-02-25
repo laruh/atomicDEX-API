@@ -1,5 +1,4 @@
 use super::{lp_main, LpMainParams};
-use crate::mm2::lp_ordermatch::MIN_ORDER_KEEP_ALIVE_INTERVAL;
 use bigdecimal::BigDecimal;
 use common::executor::Timer;
 use common::for_tests::{check_my_swap_status, check_recent_swaps, check_stats_swap_status, enable_lightning,
@@ -10,6 +9,7 @@ use common::mm_metrics::{MetricType, MetricsJson};
 use common::mm_number::{Fraction, MmNumber};
 use common::privkey::key_pair_from_seed;
 use http::{HeaderMap, StatusCode};
+use lp_ordermatch::MIN_ORDER_KEEP_ALIVE_INTERVAL;
 use num_rational::BigRational;
 use serde_json::{self as json, Value as Json};
 use std::collections::HashMap;

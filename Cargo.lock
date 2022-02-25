@@ -3054,6 +3054,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "lp_network"
+version = "0.1.0"
+dependencies = [
+ "common",
+ "derive_more",
+ "futures 0.3.15",
+ "mm2-libp2p",
+]
+
+[[package]]
+name = "lp_ordermatch"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bitcrypto",
+ "blake2",
+ "coins",
+ "common",
+ "crypto",
+]
+
+[[package]]
 name = "lru"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3251,7 +3273,6 @@ dependencies = [
  "async-trait",
  "bigdecimal",
  "bitcrypto",
- "blake2",
  "bytes 0.4.12",
  "cfg-if 1.0.0",
  "chain",
@@ -3287,6 +3308,8 @@ dependencies = [
  "keys",
  "lazy_static",
  "libc",
+ "lp_network",
+ "lp_ordermatch",
  "metrics",
  "mm2-libp2p",
  "mocktopus",
@@ -4532,9 +4555,9 @@ dependencies = [
 
 [[package]]
 name = "rmp-serde"
-version = "0.14.3"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c1ee98f14fe8b8e9c5ea13d25da7b2a1796169202c57a09d7288de90d56222b"
+checksum = "f3eedffbfcc6a428f230c04baf8f59bd73c1781361e4286111fe900849aaddaf"
 dependencies = [
  "byteorder 1.4.3",
  "rmp",
@@ -4814,9 +4837,9 @@ dependencies = [
 
 [[package]]
 name = "serde"
-version = "1.0.114"
+version = "1.0.136"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5317f7588f0a5078ee60ef675ef96735a1442132dc645eb1d12c018620ed8cd3"
+checksum = "ce31e24b01e1e524df96f1c2fdd054405f8d7376249a5110886fb4b658484789"
 dependencies = [
  "serde_derive",
 ]
@@ -4861,9 +4884,9 @@ dependencies = [
 
 [[package]]
 name = "serde_derive"
-version = "1.0.114"
+version = "1.0.136"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2a0be94b04690fbaed37cddffc5c134bf537c8e3329d53e982fe04c374978f8e"
+checksum = "08597e7152fcd306f41838ed3e37be9eaeed2b61c42e2117266a554fab4662f9"
 dependencies = [
  "proc-macro2",
  "quote 1.0.7",

@@ -1,9 +1,9 @@
 use super::{subscribe_to_orderbook_topic, OrdermatchContext, RpcOrderbookEntry};
-use crate::mm2::lp_ordermatch::addr_format_from_protocol_info;
 use coins::{address_by_coin_conf_and_pubkey_str, coin_conf, is_wallet_only_conf};
 use common::{mm_ctx::MmArc, mm_number::MmNumber, now_ms};
 use crypto::CryptoCtx;
 use http::Response;
+use lp_ordermatch::addr_format_from_protocol_info;
 use num_rational::BigRational;
 use num_traits::Zero;
 use serde_json::{self as json, Value as Json};

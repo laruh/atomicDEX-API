@@ -1,0 +1,15 @@
+[package]
+name = "lp_network"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "src/lp_network.rs"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+common = { path = "../common" }
+derive_more = "0.99"
+futures = { version = "0.3.1", package = "futures", features = ["compat", "async-await"] }
+mm2-libp2p = { path = "../mm2_libp2p" }

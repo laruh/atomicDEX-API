@@ -1,6 +1,5 @@
 use super::{DispatcherError, DispatcherResult, PUBLIC_METHODS};
 use crate::mm2::lp_native_dex::rpc_command::{mm_init_status, mm_init_user_action};
-use crate::mm2::lp_ordermatch::{start_simple_market_maker_bot, stop_simple_market_maker_bot};
 use crate::mm2::rpc::rate_limiter::{process_rate_limit, RateLimitContext};
 use crate::{mm2::lp_stats::{add_node_to_version_stat, remove_node_from_version_stat, start_version_stat_collection,
                             stop_version_stat_collection, update_version_stat_collection},
@@ -27,6 +26,7 @@ use common::mm_rpc_protocol::{MmRpcBuilder, MmRpcRequest, MmRpcVersion};
 use common::HttpStatusCode;
 use futures::Future as Future03;
 use http::Response;
+use lp_ordermatch::{start_simple_market_maker_bot, stop_simple_market_maker_bot};
 use serde::de::DeserializeOwned;
 use serde_json::{self as json, Value as Json};
 use std::net::SocketAddr;

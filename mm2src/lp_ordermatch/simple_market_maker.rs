@@ -1,7 +1,4 @@
 use crate::mm2::lp_dispatcher::{dispatch_lp_event, DispatcherContext};
-use crate::mm2::lp_ordermatch::lp_bot::{RunningState, StoppedState, StoppingState, TradingBotStarted,
-                                        TradingBotStopped, TradingBotStopping, VolumeSettings};
-use crate::mm2::lp_ordermatch::{cancel_all_orders, CancelBy, TradingBotEvent};
 use crate::mm2::{lp_ordermatch::{cancel_order, create_maker_order,
                                  lp_bot::TickerInfos,
                                  lp_bot::{Provider, SimpleCoinMarketMakerCfg, SimpleMakerBotRegistry,
@@ -22,6 +19,9 @@ use common::{executor::{spawn, Timer},
 use derive_more::Display;
 use futures::compat::Future01CompatExt;
 use http::StatusCode;
+use lp_ordermatch::lp_bot::{RunningState, StoppedState, StoppingState, TradingBotStarted, TradingBotStopped,
+                            TradingBotStopping, VolumeSettings};
+use lp_ordermatch::{cancel_all_orders, CancelBy, TradingBotEvent};
 use serde_json::Value as Json;
 use std::{collections::{HashMap, HashSet},
           num::NonZeroUsize,

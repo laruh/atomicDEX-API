@@ -1,8 +1,8 @@
-use crate::mm2::lp_ordermatch::TradingBotEvent;
 use crate::mm2::lp_swap::MakerSwapStatusChanged;
 use async_std::sync::RwLock;
 use common::event_dispatcher::{Dispatcher, EventUniqueId};
 use common::mm_ctx::{from_ctx, MmArc};
+use lp_ordermatch::TradingBotEvent;
 use std::any::TypeId;
 use std::sync::Arc;
 

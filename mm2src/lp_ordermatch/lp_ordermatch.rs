@@ -20,7 +20,6 @@
 
 use async_trait::async_trait;
 use best_orders::BestOrdersAction;
-use bigdecimal::BigDecimal;
 use blake2::digest::{Update, VariableOutput};
 use blake2::VarBlake2b;
 use coins::utxo::{compressed_pub_key_from_priv_raw, ChecksumType};
@@ -29,6 +28,7 @@ use common::executor::{spawn, Timer};
 use common::log::{error, LogOnError};
 use common::mm_ctx::{from_ctx, MmArc, MmWeak};
 use common::mm_error::prelude::*;
+use common::mm_number::BigDecimal;
 use common::mm_number::{Fraction, MmNumber};
 use common::privkey::key_pair_from_secret;
 use common::time_cache::TimeCache;
@@ -79,20 +79,17 @@ cfg_wasm32! {
     pub type OrdermatchDbLocked<'a> = DbLocked<'a, OrdermatchDb>;
 }
 
-#[path = "lp_ordermatch/best_orders.rs"] mod best_orders;
-#[path = "lp_ordermatch/lp_bot.rs"] mod lp_bot;
+mod best_orders;
+mod lp_bot;
 pub use lp_bot::{process_price_request, start_simple_market_maker_bot, stop_simple_market_maker_bot,
                  StartSimpleMakerBotRequest, TradingBotEvent, KMD_PRICE_ENDPOINT};
 
-#[path = "lp_ordermatch/my_orders_storage.rs"]
 mod my_orders_storage;
-#[path = "lp_ordermatch/new_protocol.rs"] mod new_protocol;
-#[path = "lp_ordermatch/order_requests_tracker.rs"]
+mod new_protocol;
 mod order_requests_tracker;
-#[path = "lp_ordermatch/orderbook_depth.rs"] mod orderbook_depth;
-#[path = "lp_ordermatch/orderbook_rpc.rs"] mod orderbook_rpc;
+mod orderbook_depth;
+mod orderbook_rpc;
 #[cfg(all(test, not(target_arch = "wasm32")))]
-#[path = "ordermatch_tests.rs"]
 pub mod ordermatch_tests;
 
 #[cfg(target_arch = "wasm32")]
