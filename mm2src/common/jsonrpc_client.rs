@@ -60,8 +60,18 @@ impl From<String> for JsonRpcRemoteAddr {
     fn from(addr: String) -> Self { JsonRpcRemoteAddr(addr) }
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+pub struct JsonRpcBatchIds(Vec<String>);
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum JsonRpcRequestEnum {
+    Single(JsonRpcRequest),
+    Batch(JsonRpcBatchRequests),
+}
+
 /// Serializable RPC request
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct JsonRpcRequest {
     pub jsonrpc: String,
     #[serde(default)]
@@ -74,7 +84,22 @@ impl JsonRpcRequest {
     pub fn get_id(&self) -> &str { &self.id }
 }
 
-#[derive(Deserialize, Debug, Clone)]
+/// Serializable RPC request
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct JsonRpcBatchRequests(Vec<JsonRpcRequest>);
+
+impl JsonRpcBatchRequests {
+    pub fn ids(&self) -> JsonRpcBatchIds { JsonRpcBatchIds(self.0.iter().map(|req| req.id.clone()).collect()) }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+pub enum JsonRpcResponseEnum {
+    Single(JsonRpcResponse),
+    Batch(JsonRpcBatchResponses),
+}
+
+#[derive(Clone, Debug, Deserialize)]
 pub struct JsonRpcResponse {
     #[serde(default)]
     pub jsonrpc: String,
@@ -84,6 +109,13 @@ pub struct JsonRpcResponse {
     pub result: Json,
     #[serde(default)]
     pub error: Json,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct JsonRpcBatchResponses(Vec<JsonRpcResponse>);
+
+impl JsonRpcBatchResponses {
+    pub fn ids(&self) -> JsonRpcBatchIds { JsonRpcBatchIds(self.0.iter().map(|res| res.id.clone()).collect()) }
 }
 
 #[derive(Clone, Debug)]

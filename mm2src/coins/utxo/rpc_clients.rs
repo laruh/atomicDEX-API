@@ -8,8 +8,9 @@ use bigdecimal::BigDecimal;
 use chain::{BlockHeader, BlockHeaderBits, BlockHeaderNonce, OutPoint, Transaction as UtxoTx};
 use common::custom_futures::{select_ok_sequential, FutureTimerExt};
 use common::executor::{spawn, Timer};
-use common::jsonrpc_client::{JsonRpcClient, JsonRpcError, JsonRpcErrorType, JsonRpcMultiClient, JsonRpcRemoteAddr,
-                             JsonRpcRequest, JsonRpcResponse, JsonRpcResponseFut, RpcRes};
+use common::jsonrpc_client::{JsonRpcBatchIds, JsonRpcBatchResponses, JsonRpcClient, JsonRpcError, JsonRpcErrorType,
+                             JsonRpcMultiClient, JsonRpcRemoteAddr, JsonRpcRequest, JsonRpcResponse,
+                             JsonRpcResponseFut, RpcRes};
 use common::log::{error, info, warn};
 use common::mm_error::prelude::*;
 use common::mm_number::{BigInt, MmNumber};
@@ -1294,6 +1295,30 @@ pub fn spawn_electrum(
     Ok(electrum_connect(url, config, event_handlers))
 }
 
+pub type JsonRpcPendingRequestsShared = Arc<AsyncMutex<JsonRpcPendingRequests>>;
+
+#[derive(Default)]
+pub struct JsonRpcPendingRequests {
+    single: HashMap<String, async_oneshot::Sender<JsonRpcResponse>>,
+    batch: HashMap<JsonRpcBatchIds, async_oneshot::Sender<JsonRpcBatchResponses>>,
+}
+
+impl JsonRpcPendingRequests {
+    fn add_single(&mut self, id: String, response_sender: async_oneshot::Sender<JsonRpcResponse>) {
+        self.single.insert(id, response_sender);
+    }
+
+    fn add_batch(&mut self, ids: JsonRpcBatchIds, response_sender: async_oneshot::Sender<JsonRpcBatchResponses>) {
+        self.batch.insert(ids, response_sender);
+    }
+
+    fn remove_single(&mut self, id: &str) -> Option<async_oneshot::Sender<JsonRpcResponse>> { self.single.remove(id) }
+
+    fn remove_batch(&mut self, ids: &JsonRpcBatchIds) -> Option<async_oneshot::Sender<JsonRpcBatchResponses>> {
+        self.batch.remove(ids)
+    }
+}
+
 #[derive(Debug)]
 /// Represents the active Electrum connection to selected address
 pub struct ElectrumConnection {
@@ -1307,7 +1332,7 @@ pub struct ElectrumConnection {
     /// The Sender used to shutdown the background connection loop when ElectrumConnection is dropped
     shutdown_tx: Option<oneshot::Sender<()>>,
     /// Responses are stored here
-    responses: Arc<AsyncMutex<HashMap<String, async_oneshot::Sender<JsonRpcResponse>>>>,
+    responses: JsonRpcPendingRequestsShared,
     /// Selected protocol version. The value is initialized after the server.version RPC call.
     protocol_version: AsyncMutex<Option<f32>>,
 }
@@ -1865,62 +1890,64 @@ fn rx_to_stream(rx: mpsc::Receiver<Vec<u8>>) -> impl Stream<Item = Vec<u8>, Erro
     rx.map_err(|_| panic!("errors not possible on rx"))
 }
 
-async fn electrum_process_json(
-    raw_json: Json,
-    arc: &Arc<AsyncMutex<HashMap<String, async_oneshot::Sender<JsonRpcResponse>>>>,
-) {
+async fn electrum_process_json(raw_json: Json, arc: &JsonRpcPendingRequestsShared) {
     // detect if we got standard JSONRPC response or subscription response as JSONRPC request
-    if raw_json["method"].is_null() && raw_json["params"].is_null() {
-        let response: JsonRpcResponse = match json::from_value(raw_json) {
-            Ok(res) => res,
-            Err(e) => {
-                error!("{}", e);
-                return;
-            },
-        };
-        let mut resp = arc.lock().await;
-        // the corresponding sender may not exist, receiver may be dropped
-        // these situations are not considered as errors so we just silently skip them
-        if let Some(tx) = resp.remove(&response.id.to_string()) {
-            tx.send(response).unwrap_or(())
-        }
-        drop(resp);
-    } else {
-        let request: JsonRpcRequest = match json::from_value(raw_json) {
-            Ok(res) => res,
-            Err(e) => {
-                error!("{}", e);
-                return;
-            },
-        };
-        let id = match request.method.as_ref() {
-            BLOCKCHAIN_HEADERS_SUB_ID => BLOCKCHAIN_HEADERS_SUB_ID,
-            _ => {
-                error!("Couldn't get id of request {:?}", request);
-                return;
-            },
-        };
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum ElectrumRpcResponseEnum {
+        /// The standard JSONRPC single response.
+        SingleResponse(JsonRpcResponse),
+        /// The batch of standard JSONRPC responses.
+        BatchResponses(JsonRpcBatchResponses),
+        /// The subscription response as JSONRPC request.
+        SubscriptionNotification(JsonRpcRequest),
+    }
 
-        let response = JsonRpcResponse {
-            id: id.into(),
-            jsonrpc: "2.0".into(),
-            result: request.params[0].clone(),
-            error: Json::Null,
-        };
-        let mut resp = arc.lock().await;
-        // the corresponding sender may not exist, receiver may be dropped
-        // these situations are not considered as errors so we just silently skip them
-        if let Some(tx) = resp.remove(&response.id.to_string()) {
-            tx.send(response).unwrap_or(())
-        }
-        drop(resp);
+    let response: ElectrumRpcResponseEnum = match json::from_value(raw_json) {
+        Ok(res) => res,
+        Err(e) => {
+            error!("{}", e);
+            return;
+        },
+    };
+
+    let mut pending = arc.lock().await;
+
+    // the corresponding sender may not exist, receiver may be dropped
+    // these situations are not considered as errors so we just silently skip them
+    match response {
+        ElectrumRpcResponseEnum::SingleResponse(resp) => {
+            if let Some(tx) = pending.remove_single(&resp.id.to_string()) {
+                tx.send(resp).ok();
+            }
+        },
+        ElectrumRpcResponseEnum::BatchResponses(batch) => {
+            if let Some(tx) = pending.remove_batch(&batch.ids()) {
+                tx.send(batch).ok();
+            }
+        },
+        ElectrumRpcResponseEnum::SubscriptionNotification(req) => {
+            let id = match req.method.as_ref() {
+                BLOCKCHAIN_HEADERS_SUB_ID => BLOCKCHAIN_HEADERS_SUB_ID,
+                _ => {
+                    error!("Couldn't get id of request {:?}", req);
+                    return;
+                },
+            };
+            let resp = JsonRpcResponse {
+                id: id.into(),
+                jsonrpc: "2.0".into(),
+                result: req.params[0].clone(),
+                error: Json::Null,
+            };
+            if let Some(tx) = pending.remove_single(&resp.id.to_string()) {
+                tx.send(resp).ok();
+            }
+        },
     }
 }
 
-async fn electrum_process_chunk(
-    chunk: &[u8],
-    arc: &Arc<AsyncMutex<HashMap<String, async_oneshot::Sender<JsonRpcResponse>>>>,
-) {
+async fn electrum_process_chunk(chunk: &[u8], arc: &JsonRpcPendingRequestsShared) {
     // we should split the received chunk because we can get several responses in 1 chunk.
     let split = chunk.split(|item| *item == b'\n');
     for chunk in split {
@@ -2029,7 +2056,7 @@ async fn electrum_last_chunk_loop(last_chunk: Arc<AtomicU64>) {
 async fn connect_loop(
     config: ElectrumConfig,
     addr: String,
-    responses: Arc<AsyncMutex<HashMap<String, async_oneshot::Sender<JsonRpcResponse>>>>,
+    responses: JsonRpcPendingRequestsShared,
     connection_tx: Arc<AsyncMutex<Option<mpsc::Sender<Vec<u8>>>>>,
     event_handlers: Vec<RpcTransportEventHandlerShared>,
 ) -> Result<(), ()> {
@@ -2257,7 +2284,7 @@ fn electrum_connect(
     event_handlers: Vec<RpcTransportEventHandlerShared>,
 ) -> ElectrumConnection {
     let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
-    let responses = Arc::new(AsyncMutex::new(HashMap::new()));
+    let responses = Arc::new(AsyncMutex::new(JsonRpcPendingRequests::default()));
     let tx = Arc::new(AsyncMutex::new(None));
 
     let connect_loop = connect_loop(
@@ -2283,7 +2310,7 @@ fn electrum_connect(
 fn electrum_request(
     request: JsonRpcRequest,
     tx: mpsc::Sender<Vec<u8>>,
-    responses: Arc<AsyncMutex<HashMap<String, async_oneshot::Sender<JsonRpcResponse>>>>,
+    responses: JsonRpcPendingRequestsShared,
     timeout: u64,
 ) -> Box<dyn Future<Item = JsonRpcResponse, Error = String> + Send + 'static> {
     let send_fut = async move {
@@ -2297,7 +2324,7 @@ fn electrum_request(
 
         let request_id = request.get_id().to_string();
         let (req_tx, resp_rx) = async_oneshot::channel();
-        responses.lock().await.insert(request_id, req_tx);
+        responses.lock().await.add_single(request_id, req_tx);
         try_s!(tx.send(json.into_bytes()).compat().await);
         let response = try_s!(resp_rx.await);
         Ok(response)
