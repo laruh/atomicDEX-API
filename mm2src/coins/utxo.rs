@@ -89,9 +89,10 @@ use self::rpc_clients::{electrum_script_hash, ElectrumClient, ElectrumRpcRequest
                         NativeClient, UnspentInfo, UtxoRpcClientEnum, UtxoRpcError, UtxoRpcFut, UtxoRpcResult};
 use super::{BalanceError, BalanceFut, BalanceResult, CoinsContext, DerivationMethod, FeeApproxStage, FoundSwapTxSpend,
             HistorySyncState, KmdRewardsDetails, MarketCoinOps, MmCoin, NumConversError, NumConversResult,
-            PrivKeyNotAllowed, PrivKeyPolicy, RpcTransportEventHandler, RpcTransportEventHandlerShared, TradeFee,
-            TradePreimageError, TradePreimageFut, TradePreimageResult, Transaction, TransactionDetails,
-            TransactionEnum, TransactionFut, UnexpectedDerivationMethod, WithdrawError, WithdrawRequest};
+            PrivKeyActivationPolicy, PrivKeyNotAllowed, PrivKeyPolicy, RpcTransportEventHandler,
+            RpcTransportEventHandlerShared, TradeFee, TradePreimageError, TradePreimageFut, TradePreimageResult,
+            Transaction, TransactionDetails, TransactionEnum, TransactionFut, UnexpectedDerivationMethod,
+            WithdrawError, WithdrawRequest};
 use crate::coin_balance::{EnableCoinScanPolicy, HDAddressBalanceScanner};
 use crate::hd_wallet::{HDAccountOps, HDAccountsMutex, HDAddress, HDWalletCoinOps, HDWalletOps, InvalidBip44ChainError};
 use crate::hd_wallet_storage::{HDAccountStorageItem, HDWalletCoinStorage, HDWalletStorageError, HDWalletStorageResult};
@@ -1043,6 +1044,8 @@ pub struct UtxoActivationParams {
     pub gap_limit: Option<u32>,
     #[serde(default)]
     pub scan_policy: EnableCoinScanPolicy,
+    #[serde(default = "PrivKeyActivationPolicy::iguana_priv_key")]
+    pub priv_key_policy: PrivKeyActivationPolicy,
     /// The flag determines whether to use mature unspent outputs *only* to generate transactions.
     /// https://github.com/KomodoPlatform/atomicDEX-API/issues/1181
     pub check_utxo_maturity: Option<bool>,
@@ -1057,6 +1060,8 @@ pub enum UtxoFromLegacyReqErr {
     InvalidRequiresNota(json::Error),
     InvalidAddressFormat(json::Error),
     InvalidCheckUtxoMaturity(json::Error),
+    InvalidScanPolicy(json::Error),
+    InvalidPrivKeyPolicy(json::Error),
 }
 
 impl UtxoActivationParams {
@@ -1082,7 +1087,12 @@ impl UtxoActivationParams {
             json::from_value(req["address_format"].clone()).map_to_mm(UtxoFromLegacyReqErr::InvalidAddressFormat)?;
         let check_utxo_maturity = json::from_value(req["check_utxo_maturity"].clone())
             .map_to_mm(UtxoFromLegacyReqErr::InvalidCheckUtxoMaturity)?;
-        let scan_policy = EnableCoinScanPolicy::default();
+        let scan_policy = json::from_value::<Option<EnableCoinScanPolicy>>(req["scan_policy"].clone())
+            .map_to_mm(UtxoFromLegacyReqErr::InvalidScanPolicy)?
+            .unwrap_or_default();
+        let priv_key_policy = json::from_value::<Option<PrivKeyActivationPolicy>>(req["priv_key_policy"].clone())
+            .map_to_mm(UtxoFromLegacyReqErr::InvalidPrivKeyPolicy)?
+            .unwrap_or(PrivKeyActivationPolicy::IguanaPrivKey);
 
         Ok(UtxoActivationParams {
             mode,
@@ -1093,6 +1103,7 @@ impl UtxoActivationParams {
             address_format,
             gap_limit: None,
             scan_policy,
+            priv_key_policy,
             check_utxo_maturity,
         })
     }
@@ -1482,6 +1493,7 @@ pub fn address_by_conf_and_pubkey_str(
         address_format: None,
         gap_limit: None,
         scan_policy: EnableCoinScanPolicy::default(),
+        priv_key_policy: PrivKeyActivationPolicy::IguanaPrivKey,
         check_utxo_maturity: None,
     };
     let conf_builder = UtxoConfBuilder::new(conf, &params, coin);

@@ -82,6 +82,8 @@ impl From<AccountUpdatingError> for NewAddressDerivingError {
 
 #[derive(Display)]
 pub enum NewAccountCreatingError {
+    #[display(fmt = "Hardware Wallet context is not initialized")]
+    HwContextNotInitialized,
     #[display(fmt = "HD wallet is unavailable")]
     HDWalletUnavailable,
     #[display(
@@ -120,6 +122,7 @@ impl From<HDWalletStorageError> for NewAccountCreatingError {
 impl From<NewAccountCreatingError> for HDWalletRpcError {
     fn from(e: NewAccountCreatingError) -> Self {
         match e {
+            NewAccountCreatingError::HwContextNotInitialized => HDWalletRpcError::HwContextNotInitialized,
             NewAccountCreatingError::HDWalletUnavailable => HDWalletRpcError::CoinIsActivatedNotWithHDWallet,
             NewAccountCreatingError::CoinDoesntSupportTrezor => HDWalletRpcError::CoinDoesntSupportTrezor,
             NewAccountCreatingError::RpcTaskError(rpc) => HDWalletRpcError::from(rpc),
@@ -192,9 +195,11 @@ pub enum HDWalletRpcError {
     /*                                              */
     /* ----------- HD Wallet RPC error ------------ */
     /*                                              */
+    #[display(fmt = "Hardware Wallet context is not initialized")]
+    HwContextNotInitialized,
     #[display(fmt = "No such coin {}", coin)]
     NoSuchCoin { coin: String },
-    #[display(fmt = "Withdraw timed out {:?}", _0)]
+    #[display(fmt = "RPC timed out {:?}", _0)]
     Timeout(Duration),
     #[display(fmt = "Coin is expected to be activated with the HD wallet derivation method")]
     CoinIsActivatedNotWithHDWallet,
@@ -304,6 +309,7 @@ impl HttpStatusCode for HDWalletRpcError {
     fn status_code(&self) -> StatusCode {
         match self {
             HDWalletRpcError::CoinDoesntSupportTrezor
+            | HDWalletRpcError::HwContextNotInitialized
             | HDWalletRpcError::NoSuchCoin { .. }
             | HDWalletRpcError::CoinIsActivatedNotWithHDWallet
             | HDWalletRpcError::UnknownAccount { .. }

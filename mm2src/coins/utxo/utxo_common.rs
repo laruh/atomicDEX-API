@@ -522,7 +522,7 @@ pub fn my_public_key(coin: &UtxoCoinFields) -> Result<&Public, MmError<Unexpecte
     match coin.priv_key_policy {
         PrivKeyPolicy::KeyPair(ref key_pair) => Ok(key_pair.public()),
         // Hardware Wallets requires BIP39/BIP44 derivation path to extract a public key.
-        PrivKeyPolicy::HardwareWallet => MmError::err(UnexpectedDerivationMethod::IguanaPrivKeyUnavailable),
+        PrivKeyPolicy::Trezor => MmError::err(UnexpectedDerivationMethod::IguanaPrivKeyUnavailable),
     }
 }
 
@@ -1767,7 +1767,7 @@ pub fn current_block(coin: &UtxoCoinFields) -> Box<dyn Future<Item = u64, Error 
 pub fn display_priv_key(coin: &UtxoCoinFields) -> Result<String, String> {
     match coin.priv_key_policy {
         PrivKeyPolicy::KeyPair(ref key_pair) => Ok(key_pair.private().to_string()),
-        PrivKeyPolicy::HardwareWallet => ERR!("'display_priv_key' doesn't support Hardware Wallets"),
+        PrivKeyPolicy::Trezor => ERR!("'display_priv_key' doesn't support Hardware Wallets"),
     }
 }
 
@@ -1803,6 +1803,7 @@ where
         + UtxoCommonOps
         + MarketCoinOps
         + UtxoSignerOps
+        + CoinWithDerivationMethod
         + GetWithdrawSenderAddress<Address = Address, Pubkey = Public>
         + Send
         + Sync
@@ -3469,7 +3470,7 @@ where
 {
     match &coin.as_ref().priv_key_policy {
         PrivKeyPolicy::KeyPair(key_pair) => key_pair.clone(),
-        PrivKeyPolicy::HardwareWallet => KeyPair::random_compressed(),
+        PrivKeyPolicy::Trezor => KeyPair::random_compressed(),
     }
 }
 

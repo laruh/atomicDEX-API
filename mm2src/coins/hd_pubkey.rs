@@ -13,7 +13,7 @@ use std::convert::TryInto;
 
 #[derive(Clone)]
 pub enum HDExtractPubkeyError {
-    HDWalletUnavailable,
+    HwContextNotInitialized,
     CoinDoesntSupportTrezor,
     RpcTaskError(RpcTaskError),
     HardwareWalletError(HwError),
@@ -54,7 +54,7 @@ impl From<HwProcessingError<RpcTaskError>> for HDExtractPubkeyError {
 impl From<HDExtractPubkeyError> for NewAccountCreatingError {
     fn from(e: HDExtractPubkeyError) -> Self {
         match e {
-            HDExtractPubkeyError::HDWalletUnavailable => NewAccountCreatingError::HDWalletUnavailable,
+            HDExtractPubkeyError::HwContextNotInitialized => NewAccountCreatingError::HwContextNotInitialized,
             HDExtractPubkeyError::CoinDoesntSupportTrezor => NewAccountCreatingError::CoinDoesntSupportTrezor,
             HDExtractPubkeyError::RpcTaskError(rpc) => NewAccountCreatingError::RpcTaskError(rpc),
             HDExtractPubkeyError::HardwareWalletError(hw) => NewAccountCreatingError::HardwareWalletError(hw),
@@ -69,7 +69,7 @@ impl From<HDExtractPubkeyError> for NewAccountCreatingError {
 impl From<HDExtractPubkeyError> for HDWalletRpcError {
     fn from(e: HDExtractPubkeyError) -> Self {
         match e {
-            HDExtractPubkeyError::HDWalletUnavailable => HDWalletRpcError::CoinIsActivatedNotWithHDWallet,
+            HDExtractPubkeyError::HwContextNotInitialized => HDWalletRpcError::HwContextNotInitialized,
             HDExtractPubkeyError::CoinDoesntSupportTrezor => HDWalletRpcError::CoinDoesntSupportTrezor,
             HDExtractPubkeyError::RpcTaskError(rpc) => HDWalletRpcError::from(rpc),
             HDExtractPubkeyError::HardwareWalletError(hw) => HDWalletRpcError::from(hw),
@@ -138,30 +138,30 @@ where
     Task: RpcTask,
     Task::UserAction: TryInto<TrezorPinMatrix3x3Response, Error = RpcTaskError> + Send,
 {
-    pub fn new(
+    pub async fn new(
         ctx: &MmArc,
         task_handle: &'task RpcTaskHandle<Task>,
         statuses: HwConnectStatuses<Task::InProgressStatus, Task::AwaitingStatus>,
-    ) -> MmResult<Self, HDExtractPubkeyError> {
+    ) -> MmResult<RpcTaskXPubExtractor<'task, Task>, HDExtractPubkeyError> {
         let crypto_ctx = CryptoCtx::from_ctx(ctx)?;
-        // Don't use [`CryptoCtx::hw_ctx`] because we are planning to support HD master key.
-        match *crypto_ctx {
-            CryptoCtx::HardwareWallet(ref hw_ctx) => Ok(RpcTaskXPubExtractor::Trezor {
-                hw_ctx: hw_ctx.clone(),
-                task_handle,
-                statuses,
-            }),
-            CryptoCtx::KeyPair(_) => MmError::err(HDExtractPubkeyError::HDWalletUnavailable),
-        }
+        let hw_ctx = crypto_ctx
+            .hw_ctx()
+            .await
+            .or_mm_err(|| HDExtractPubkeyError::HwContextNotInitialized)?;
+        Ok(RpcTaskXPubExtractor::Trezor {
+            hw_ctx,
+            task_handle,
+            statuses,
+        })
     }
 
     /// Constructs an Xpub extractor without checking if the MarketMaker is initialized with a hardware wallet.
-    pub fn new_unchecked(
+    pub async fn new_unchecked(
         ctx: &MmArc,
         task_handle: &'task RpcTaskHandle<Task>,
         statuses: HwConnectStatuses<Task::InProgressStatus, Task::AwaitingStatus>,
-    ) -> XPubExtractorUnchecked<Self> {
-        XPubExtractorUnchecked(Self::new(ctx, task_handle, statuses))
+    ) -> XPubExtractorUnchecked<RpcTaskXPubExtractor<'task, Task>> {
+        XPubExtractorUnchecked(Self::new(ctx, task_handle, statuses).await)
     }
 
     async fn extract_utxo_xpub_from_trezor(
