@@ -8,9 +8,9 @@ use bigdecimal::BigDecimal;
 use chain::{BlockHeader, BlockHeaderBits, BlockHeaderNonce, OutPoint, Transaction as UtxoTx};
 use common::custom_futures::{select_ok_sequential, FutureTimerExt};
 use common::executor::{spawn, Timer};
-use common::jsonrpc_client::{JsonRpcBatchIds, JsonRpcBatchResponses, JsonRpcClient, JsonRpcError, JsonRpcErrorType,
-                             JsonRpcMultiClient, JsonRpcRemoteAddr, JsonRpcRequest, JsonRpcResponse,
-                             JsonRpcResponseFut, RpcRes};
+use common::jsonrpc_client::{JsonRpcBatchResponse, JsonRpcClient, JsonRpcError, JsonRpcErrorType, JsonRpcId,
+                             JsonRpcMultiClient, JsonRpcRemoteAddr, JsonRpcRequest, JsonRpcRequestEnum,
+                             JsonRpcResponse, JsonRpcResponseEnum, JsonRpcResponseFut, RpcRes};
 use common::log::{error, info, warn};
 use common::mm_error::prelude::*;
 use common::mm_number::{BigInt, MmNumber};
@@ -58,6 +58,8 @@ cfg_native! {
 }
 
 pub type AddressesByLabelResult = HashMap<String, AddressPurpose>;
+pub type JsonRpcPendingRequestsShared = Arc<AsyncMutex<JsonRpcPendingRequests>>;
+pub type JsonRpcPendingRequests = HashMap<JsonRpcId, async_oneshot::Sender<JsonRpcResponseEnum>>;
 
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
@@ -558,14 +560,14 @@ impl JsonRpcClient for NativeClientImpl {
     fn client_info(&self) -> String { UtxoJsonRpcClientInfo::client_info(self) }
 
     #[cfg(target_arch = "wasm32")]
-    fn transport(&self, _request: JsonRpcRequest) -> JsonRpcResponseFut {
+    fn transport(&self, _request: JsonRpcRequestEnum) -> JsonRpcResponseFut {
         Box::new(futures01::future::err(ERRL!(
             "'NativeClientImpl' must be used in native mode only"
         )))
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn transport(&self, request: JsonRpcRequest) -> JsonRpcResponseFut {
+    fn transport(&self, request: JsonRpcRequestEnum) -> JsonRpcResponseFut {
         use common::transport::slurp_req;
 
         let request_body = try_fus!(json::to_string(&request));
@@ -582,7 +584,7 @@ impl JsonRpcClient for NativeClientImpl {
 
         let event_handles = self.event_handlers.clone();
         Box::new(slurp_req(http_request).boxed().compat().then(
-            move |result| -> Result<(JsonRpcRemoteAddr, JsonRpcResponse), String> {
+            move |result| -> Result<(JsonRpcRemoteAddr, JsonRpcResponseEnum), String> {
                 let res = try_s!(result);
                 // measure now only body length, because the `hyper` crate doesn't allow to get total HTTP packet length
                 event_handles.on_incoming_response(&res.2);
@@ -1295,30 +1297,6 @@ pub fn spawn_electrum(
     Ok(electrum_connect(url, config, event_handlers))
 }
 
-pub type JsonRpcPendingRequestsShared = Arc<AsyncMutex<JsonRpcPendingRequests>>;
-
-#[derive(Default)]
-pub struct JsonRpcPendingRequests {
-    single: HashMap<String, async_oneshot::Sender<JsonRpcResponse>>,
-    batch: HashMap<JsonRpcBatchIds, async_oneshot::Sender<JsonRpcBatchResponses>>,
-}
-
-impl JsonRpcPendingRequests {
-    fn add_single(&mut self, id: String, response_sender: async_oneshot::Sender<JsonRpcResponse>) {
-        self.single.insert(id, response_sender);
-    }
-
-    fn add_batch(&mut self, ids: JsonRpcBatchIds, response_sender: async_oneshot::Sender<JsonRpcBatchResponses>) {
-        self.batch.insert(ids, response_sender);
-    }
-
-    fn remove_single(&mut self, id: &str) -> Option<async_oneshot::Sender<JsonRpcResponse>> { self.single.remove(id) }
-
-    fn remove_batch(&mut self, ids: &JsonRpcBatchIds) -> Option<async_oneshot::Sender<JsonRpcBatchResponses>> {
-        self.batch.remove(ids)
-    }
-}
-
 #[derive(Debug)]
 /// Represents the active Electrum connection to selected address
 pub struct ElectrumConnection {
@@ -1425,8 +1403,8 @@ pub struct ElectrumClientImpl {
 
 async fn electrum_request_multi(
     client: ElectrumClient,
-    request: JsonRpcRequest,
-) -> Result<(JsonRpcRemoteAddr, JsonRpcResponse), String> {
+    request: JsonRpcRequestEnum,
+) -> Result<(JsonRpcRemoteAddr, JsonRpcResponseEnum), String> {
     let mut futures = vec![];
     let connections = client.connections.lock().await;
     for (i, connection) in connections.iter().enumerate() {
@@ -1449,31 +1427,32 @@ async fn electrum_request_multi(
     if futures.is_empty() {
         return ERR!("All electrums are currently disconnected");
     }
-    if request.method != "server.ping" {
-        match select_ok_sequential(futures).compat().await {
-            Ok((res, no_of_failed_requests)) => {
-                client.clone().rotate_servers(no_of_failed_requests).await;
-                Ok(res)
-            },
-            Err(e) => return ERR!("{:?}", e),
-        }
-    } else {
-        // server.ping must be sent to all servers to keep all connections alive
-        Ok(try_s!(
-            select_ok(futures)
+
+    match request {
+        JsonRpcRequestEnum::Single(single) if single.method == "server.ping" => {
+            // server.ping must be sent to all servers to keep all connections alive
+            return select_ok(futures)
                 .map(|(result, _)| result)
                 .map_err(|e| ERRL!("{:?}", e))
                 .compat()
-                .await
-        ))
+                .await;
+        },
+        _ => (),
     }
+
+    let (res, no_of_failed_requests) = select_ok_sequential(futures)
+        .compat()
+        .await
+        .map_err(|e| ERRL!("{:?}", e))?;
+    client.rotate_servers(no_of_failed_requests).await;
+    Ok(res)
 }
 
 async fn electrum_request_to(
     client: ElectrumClient,
-    request: JsonRpcRequest,
+    request: JsonRpcRequestEnum,
     to_addr: String,
-) -> Result<(JsonRpcRemoteAddr, JsonRpcResponse), String> {
+) -> Result<(JsonRpcRemoteAddr, JsonRpcResponseEnum), String> {
     let (tx, responses) = {
         let connections = client.connections.lock().await;
         let connection = connections
@@ -1582,13 +1561,13 @@ impl JsonRpcClient for ElectrumClient {
 
     fn client_info(&self) -> String { UtxoJsonRpcClientInfo::client_info(self) }
 
-    fn transport(&self, request: JsonRpcRequest) -> JsonRpcResponseFut {
+    fn transport(&self, request: JsonRpcRequestEnum) -> JsonRpcResponseFut {
         Box::new(electrum_request_multi(self.clone(), request).boxed().compat())
     }
 }
 
 impl JsonRpcMultiClient for ElectrumClient {
-    fn transport_exact(&self, to_addr: String, request: JsonRpcRequest) -> JsonRpcResponseFut {
+    fn transport_exact(&self, to_addr: String, request: JsonRpcRequestEnum) -> JsonRpcResponseFut {
         Box::new(electrum_request_to(self.clone(), request, to_addr).boxed().compat())
     }
 }
@@ -1898,7 +1877,7 @@ async fn electrum_process_json(raw_json: Json, arc: &JsonRpcPendingRequestsShare
         /// The standard JSONRPC single response.
         SingleResponse(JsonRpcResponse),
         /// The batch of standard JSONRPC responses.
-        BatchResponses(JsonRpcBatchResponses),
+        BatchResponses(JsonRpcBatchResponse),
         /// The subscription response as JSONRPC request.
         SubscriptionNotification(JsonRpcRequest),
     }
@@ -1911,21 +1890,9 @@ async fn electrum_process_json(raw_json: Json, arc: &JsonRpcPendingRequestsShare
         },
     };
 
-    let mut pending = arc.lock().await;
-
-    // the corresponding sender may not exist, receiver may be dropped
-    // these situations are not considered as errors so we just silently skip them
-    match response {
-        ElectrumRpcResponseEnum::SingleResponse(resp) => {
-            if let Some(tx) = pending.remove_single(&resp.id.to_string()) {
-                tx.send(resp).ok();
-            }
-        },
-        ElectrumRpcResponseEnum::BatchResponses(batch) => {
-            if let Some(tx) = pending.remove_batch(&batch.ids()) {
-                tx.send(batch).ok();
-            }
-        },
+    let response = match response {
+        ElectrumRpcResponseEnum::SingleResponse(single) => JsonRpcResponseEnum::Single(single),
+        ElectrumRpcResponseEnum::BatchResponses(batch) => JsonRpcResponseEnum::Batch(batch),
         ElectrumRpcResponseEnum::SubscriptionNotification(req) => {
             let id = match req.method.as_ref() {
                 BLOCKCHAIN_HEADERS_SUB_ID => BLOCKCHAIN_HEADERS_SUB_ID,
@@ -1934,16 +1901,20 @@ async fn electrum_process_json(raw_json: Json, arc: &JsonRpcPendingRequestsShare
                     return;
                 },
             };
-            let resp = JsonRpcResponse {
+            JsonRpcResponseEnum::Single(JsonRpcResponse {
                 id: id.into(),
                 jsonrpc: "2.0".into(),
                 result: req.params[0].clone(),
                 error: Json::Null,
-            };
-            if let Some(tx) = pending.remove_single(&resp.id.to_string()) {
-                tx.send(resp).ok();
-            }
+            })
         },
+    };
+
+    // the corresponding sender may not exist, receiver may be dropped
+    // these situations are not considered as errors so we just silently skip them
+    let mut pending = arc.lock().await;
+    if let Some(tx) = pending.remove(&response.rpc_id()) {
+        tx.send(response).ok();
     }
 }
 
@@ -2308,11 +2279,11 @@ fn electrum_connect(
 }
 
 fn electrum_request(
-    request: JsonRpcRequest,
+    request: JsonRpcRequestEnum,
     tx: mpsc::Sender<Vec<u8>>,
     responses: JsonRpcPendingRequestsShared,
     timeout: u64,
-) -> Box<dyn Future<Item = JsonRpcResponse, Error = String> + Send + 'static> {
+) -> Box<dyn Future<Item = JsonRpcResponseEnum, Error = String> + Send + 'static> {
     let send_fut = async move {
         let mut json = try_s!(json::to_string(&request));
         #[cfg(not(target_arch = "wasm"))]
@@ -2322,12 +2293,11 @@ fn electrum_request(
             json.push('\n');
         }
 
-        let request_id = request.get_id().to_string();
         let (req_tx, resp_rx) = async_oneshot::channel();
-        responses.lock().await.add_single(request_id, req_tx);
+        responses.lock().await.insert(request.rpc_id(), req_tx);
         try_s!(tx.send(json.into_bytes()).compat().await);
-        let response = try_s!(resp_rx.await);
-        Ok(response)
+        let resps = try_s!(resp_rx.await);
+        Ok(resps)
     };
     let send_fut = send_fut
         .boxed()

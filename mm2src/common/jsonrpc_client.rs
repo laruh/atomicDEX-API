@@ -61,13 +61,34 @@ impl From<String> for JsonRpcRemoteAddr {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
-pub struct JsonRpcBatchIds(Vec<String>);
+pub enum JsonRpcId {
+    Single(String),
+    Batch(Vec<String>),
+}
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum JsonRpcRequestEnum {
     Single(JsonRpcRequest),
-    Batch(JsonRpcBatchRequests),
+    Batch(JsonRpcBatchRequest),
+}
+
+impl JsonRpcRequestEnum {
+    pub fn rpc_id(&self) -> JsonRpcId {
+        match self {
+            JsonRpcRequestEnum::Single(single) => single.rpc_id(),
+            JsonRpcRequestEnum::Batch(batch) => batch.rpc_id(),
+        }
+    }
+}
+
+impl fmt::Debug for JsonRpcRequestEnum {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            JsonRpcRequestEnum::Single(single) => single.fmt(f),
+            JsonRpcRequestEnum::Batch(batch) => batch.fmt(f),
+        }
+    }
 }
 
 /// Serializable RPC request
@@ -82,21 +103,44 @@ pub struct JsonRpcRequest {
 
 impl JsonRpcRequest {
     pub fn get_id(&self) -> &str { &self.id }
+
+    pub fn rpc_id(&self) -> JsonRpcId { JsonRpcId::Single(self.id.clone()) }
+}
+
+impl From<JsonRpcRequest> for JsonRpcRequestEnum {
+    fn from(single: JsonRpcRequest) -> Self { JsonRpcRequestEnum::Single(single) }
 }
 
 /// Serializable RPC request
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct JsonRpcBatchRequests(Vec<JsonRpcRequest>);
+pub struct JsonRpcBatchRequest(Vec<JsonRpcRequest>);
 
-impl JsonRpcBatchRequests {
-    pub fn ids(&self) -> JsonRpcBatchIds { JsonRpcBatchIds(self.0.iter().map(|req| req.id.clone()).collect()) }
+impl JsonRpcBatchRequest {
+    pub fn rpc_id(&self) -> JsonRpcId { JsonRpcId::Batch(self.0.iter().map(|req| req.id.clone()).collect()) }
+
+    pub fn len(&self) -> usize { self.0.len() }
+
+    pub fn is_empty(&self) -> bool { self.0.is_empty() }
+}
+
+impl From<JsonRpcBatchRequest> for JsonRpcRequestEnum {
+    fn from(batch: JsonRpcBatchRequest) -> Self { JsonRpcRequestEnum::Batch(batch) }
 }
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(untagged)]
 pub enum JsonRpcResponseEnum {
     Single(JsonRpcResponse),
-    Batch(JsonRpcBatchResponses),
+    Batch(JsonRpcBatchResponse),
+}
+
+impl JsonRpcResponseEnum {
+    pub fn rpc_id(&self) -> JsonRpcId {
+        match self {
+            JsonRpcResponseEnum::Single(single) => single.rpc_id(),
+            JsonRpcResponseEnum::Batch(batch) => batch.rpc_id(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -111,11 +155,26 @@ pub struct JsonRpcResponse {
     pub error: Json,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-pub struct JsonRpcBatchResponses(Vec<JsonRpcResponse>);
+impl JsonRpcResponse {
+    pub fn rpc_id(&self) -> JsonRpcId { JsonRpcId::Single(self.id.clone()) }
+}
 
-impl JsonRpcBatchResponses {
-    pub fn ids(&self) -> JsonRpcBatchIds { JsonRpcBatchIds(self.0.iter().map(|res| res.id.clone()).collect()) }
+#[derive(Clone, Debug, Deserialize)]
+pub struct JsonRpcBatchResponse(Vec<JsonRpcResponse>);
+
+impl JsonRpcBatchResponse {
+    pub fn rpc_id(&self) -> JsonRpcId { JsonRpcId::Batch(self.0.iter().map(|res| res.id.clone()).collect()) }
+
+    pub fn len(&self) -> usize { self.0.len() }
+
+    pub fn is_empty(&self) -> bool { self.0.is_empty() }
+}
+
+impl IntoIterator for JsonRpcBatchResponse {
+    type Item = JsonRpcResponse;
+    type IntoIter = std::vec::IntoIter<JsonRpcResponse>;
+
+    fn into_iter(self) -> Self::IntoIter { self.0.into_iter() }
 }
 
 #[derive(Clone, Debug)]
@@ -124,7 +183,7 @@ pub struct JsonRpcError {
     /// The info is used in particular to supplement the error info.
     pub client_info: String,
     /// Source Rpc request.
-    pub request: JsonRpcRequest,
+    pub request: JsonRpcRequestEnum,
     /// Error type.
     pub error: JsonRpcErrorType,
 }
@@ -148,7 +207,7 @@ impl fmt::Display for JsonRpcError {
 }
 
 pub type JsonRpcResponseFut =
-    Box<dyn Future<Item = (JsonRpcRemoteAddr, JsonRpcResponse), Error = String> + Send + 'static>;
+    Box<dyn Future<Item = (JsonRpcRemoteAddr, JsonRpcResponseEnum), Error = String> + Send + 'static>;
 pub type RpcRes<T> = Box<dyn Future<Item = T, Error = JsonRpcError> + Send + 'static>;
 
 pub trait JsonRpcClient {
@@ -159,20 +218,28 @@ pub trait JsonRpcClient {
     /// Get info that is used in particular to supplement the error info
     fn client_info(&self) -> String;
 
-    fn transport(&self, request: JsonRpcRequest) -> JsonRpcResponseFut;
+    fn transport(&self, request: JsonRpcRequestEnum) -> JsonRpcResponseFut;
 
     fn send_request<T: DeserializeOwned + Send + 'static>(&self, request: JsonRpcRequest) -> RpcRes<T> {
         let client_info = self.client_info();
         Box::new(
-            self.transport(request.clone())
-                .then(move |result| process_transport_result(result, client_info, request)),
+            self.transport(JsonRpcRequestEnum::Single(request.clone()))
+                .then(move |result| process_transport_single_result(result, client_info, request)),
+        )
+    }
+
+    fn send_batch_request<T: DeserializeOwned + Send + 'static>(&self, request: JsonRpcBatchRequest) -> RpcRes<Vec<T>> {
+        let client_info = self.client_info();
+        Box::new(
+            self.transport(JsonRpcRequestEnum::Batch(request.clone()))
+                .then(move |result| process_transport_batch_result(result, client_info, request)),
         )
     }
 }
 
 /// The trait is used when the rpc client instance has more than one remote endpoints.
 pub trait JsonRpcMultiClient: JsonRpcClient {
-    fn transport_exact(&self, to_addr: String, request: JsonRpcRequest) -> JsonRpcResponseFut;
+    fn transport_exact(&self, to_addr: String, request: JsonRpcRequestEnum) -> JsonRpcResponseFut;
 
     fn send_request_to<T: DeserializeOwned + Send + 'static>(
         &self,
@@ -181,19 +248,57 @@ pub trait JsonRpcMultiClient: JsonRpcClient {
     ) -> RpcRes<T> {
         let client_info = self.client_info();
         Box::new(
-            self.transport_exact(to_addr.to_owned(), request.clone())
-                .then(move |result| process_transport_result(result, client_info, request)),
+            self.transport_exact(to_addr.to_owned(), JsonRpcRequestEnum::Single(request.clone()))
+                .then(move |result| process_transport_single_result(result, client_info, request)),
         )
     }
 }
 
-fn process_transport_result<T: DeserializeOwned + Send + 'static>(
-    result: Result<(JsonRpcRemoteAddr, JsonRpcResponse), String>,
+fn process_transport_single_result<T: DeserializeOwned + Send + 'static>(
+    result: Result<(JsonRpcRemoteAddr, JsonRpcResponseEnum), String>,
     client_info: String,
     request: JsonRpcRequest,
 ) -> Result<T, JsonRpcError> {
+    let request = JsonRpcRequestEnum::Single(request);
+
+    match result {
+        Ok((remote_addr, JsonRpcResponseEnum::Single(single))) => {
+            process_single_response(client_info, remote_addr, request, single)
+        },
+        Ok((remote_addr, JsonRpcResponseEnum::Batch(batch))) => {
+            let error = ERRL!("Expeced single response, found batch response: {:?}", batch);
+            Err(JsonRpcError {
+                client_info,
+                request,
+                error: JsonRpcErrorType::Parse(remote_addr, error),
+            })
+        },
+        Err(e) => Err(JsonRpcError {
+            client_info,
+            request,
+            error: JsonRpcErrorType::Transport(e),
+        }),
+    }
+}
+
+fn process_transport_batch_result<T: DeserializeOwned + Send + 'static>(
+    result: Result<(JsonRpcRemoteAddr, JsonRpcResponseEnum), String>,
+    client_info: String,
+    request: JsonRpcBatchRequest,
+) -> Result<Vec<T>, JsonRpcError> {
+    let expected_len = request.len();
+    let request = JsonRpcRequestEnum::Batch(request);
+
     let (remote_addr, response) = match result {
-        Ok(r) => r,
+        Ok((remote_addr, JsonRpcResponseEnum::Batch(batch))) => (remote_addr, batch),
+        Ok((remote_addr, JsonRpcResponseEnum::Single(single))) => {
+            let error = ERRL!("Expected batch response, found single response: {:?}", single);
+            return Err(JsonRpcError {
+                client_info,
+                request,
+                error: JsonRpcErrorType::Parse(remote_addr, error),
+            });
+        },
         Err(e) => {
             return Err(JsonRpcError {
                 client_info,
@@ -203,6 +308,31 @@ fn process_transport_result<T: DeserializeOwned + Send + 'static>(
         },
     };
 
+    if response.len() != expected_len {
+        let error = ERRL!(
+            "Expected '{}' elements in batch response, found '{}'",
+            expected_len,
+            response.len()
+        );
+        return Err(JsonRpcError {
+            client_info,
+            request,
+            error: JsonRpcErrorType::Parse(remote_addr, error),
+        });
+    }
+
+    response
+        .into_iter()
+        .map(|resp| process_single_response(client_info.clone(), remote_addr.clone(), request.clone(), resp))
+        .collect()
+}
+
+fn process_single_response<T: DeserializeOwned + Send + 'static>(
+    client_info: String,
+    remote_addr: JsonRpcRemoteAddr,
+    request: JsonRpcRequestEnum,
+    response: JsonRpcResponse,
+) -> Result<T, JsonRpcError> {
     if !response.error.is_null() {
         return Err(JsonRpcError {
             client_info,
