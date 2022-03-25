@@ -1,6 +1,8 @@
 use futures01::Future;
+use itertools::Itertools;
 use serde::de::DeserializeOwned;
 use serde_json::{self as json, Value as Json};
+use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 
 /// Macro generating functions for RPC requests.
@@ -9,39 +11,67 @@ use std::fmt;
 #[macro_export]
 macro_rules! rpc_func {
     ($selff:ident, $method:expr $(, $arg_name:expr)*) => {{
-        let mut params = vec![];
-        $(
-            params.push(json::value::to_value($arg_name).unwrap());
-        )*
-        let request = JsonRpcRequest {
-            jsonrpc: $selff.version().into(),
-            id: $selff.next_id(),
-            method: $method.into(),
-            params
-        };
+        let request = $crate::rpc_req!($selff, $method $(, $arg_name)*);
         $selff.send_request(request)
     }}
 }
 
 /// Macro generating functions for RPC requests.
-/// Send the RPC request to specified remote endpoint using the passed address.
+/// Sends the RPC request to specified remote endpoint using the passed address.
 /// Args must implement/derive Serialize trait.
 /// Generates params vector from input args, builds the request and sends it.
 #[macro_export]
 macro_rules! rpc_func_from {
-    ($selff:ident, $address:expr, $method:expr $(, $arg_name:ident)*) => {{
+    ($selff:ident, $address:expr, $method:expr $(, $arg_name:expr)*) => {{
+        let request = $crate::rpc_req!($selff, $method $(, $arg_name)*);
+        $selff.send_request_to($address, request)
+    }}
+}
+
+/// Macro generating functions for RPC requests.
+/// Args must implement/derive Serialize trait.
+/// Generates params vector from input args, builds the `JsonRpcRequest` request.
+#[macro_export]
+macro_rules! rpc_req {
+    ($selff:ident, $method:expr $(, $arg_name:expr)*) => {{
         let mut params = vec![];
         $(
             params.push(json::value::to_value($arg_name).unwrap());
         )*
-        let request = JsonRpcRequest {
+        JsonRpcRequest {
             jsonrpc: $selff.version().into(),
             id: $selff.next_id(),
             method: $method.into(),
             params
-        };
-        $selff.send_request_to($address, request)
+        }
     }}
+}
+
+pub type JsonRpcResponseFut =
+    Box<dyn Future<Item = (JsonRpcRemoteAddr, JsonRpcResponseEnum), Error = String> + Send + 'static>;
+pub type RpcRes<T> = Box<dyn Future<Item = T, Error = JsonRpcError> + Send + 'static>;
+
+pub trait BatchRequest {
+    /// Sends the RPC batch request.
+    /// Responses are guaranteed to be in the same order in which they were requested.
+    fn batch_rpc<Rpc, T>(self, rpc_client: &Rpc) -> RpcRes<Vec<T>>
+    where
+        Rpc: JsonRpcClient,
+        T: DeserializeOwned + Send + 'static;
+}
+
+impl<I> BatchRequest for I
+where
+    I: Iterator<Item = JsonRpcRequest>,
+{
+    fn batch_rpc<Rpc, T>(self, rpc_client: &Rpc) -> RpcRes<Vec<T>>
+    where
+        Rpc: JsonRpcClient,
+        T: DeserializeOwned + Send + 'static,
+    {
+        let batch = JsonRpcBatchRequest(self.collect());
+        rpc_client.send_batch_request(batch)
+    }
 }
 
 /// Address of server from which an Rpc response was received
@@ -60,10 +90,12 @@ impl From<String> for JsonRpcRemoteAddr {
     fn from(addr: String) -> Self { JsonRpcRemoteAddr(addr) }
 }
 
+/// The identifier is designed to uniquely match outgoing requests and incoming responses.
+/// Even if the batch response is sorted in a different order, `BTreeSet<Id>` allows it to be matched to the request.
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum JsonRpcId {
     Single(String),
-    Batch(Vec<String>),
+    Batch(BTreeSet<String>),
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -116,11 +148,15 @@ impl From<JsonRpcRequest> for JsonRpcRequestEnum {
 pub struct JsonRpcBatchRequest(Vec<JsonRpcRequest>);
 
 impl JsonRpcBatchRequest {
-    pub fn rpc_id(&self) -> JsonRpcId { JsonRpcId::Batch(self.0.iter().map(|req| req.id.clone()).collect()) }
+    pub fn rpc_id(&self) -> JsonRpcId { JsonRpcId::Batch(self.orig_sequence_ids().collect()) }
 
     pub fn len(&self) -> usize { self.0.len() }
 
     pub fn is_empty(&self) -> bool { self.0.is_empty() }
+
+    /// Returns original sequence of identifiers.
+    /// The method is used to process batch response in the same order in which the requests were sent.
+    fn orig_sequence_ids(&self) -> impl Iterator<Item = String> + '_ { self.0.iter().map(|req| req.id.clone()) }
 }
 
 impl From<JsonRpcBatchRequest> for JsonRpcRequestEnum {
@@ -188,8 +224,14 @@ pub struct JsonRpcError {
     pub error: JsonRpcErrorType,
 }
 
+impl fmt::Display for JsonRpcError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "{:?}", self) }
+}
+
 #[derive(Clone, Debug)]
 pub enum JsonRpcErrorType {
+    /// Invalid outgoing request error
+    InvalidRequest(String),
     /// Error from transport layer
     Transport(String),
     /// Response parse error
@@ -201,14 +243,6 @@ pub enum JsonRpcErrorType {
 impl JsonRpcErrorType {
     pub fn is_transport(&self) -> bool { matches!(*self, JsonRpcErrorType::Transport(_)) }
 }
-
-impl fmt::Display for JsonRpcError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "{:?}", self) }
-}
-
-pub type JsonRpcResponseFut =
-    Box<dyn Future<Item = (JsonRpcRemoteAddr, JsonRpcResponseEnum), Error = String> + Send + 'static>;
-pub type RpcRes<T> = Box<dyn Future<Item = T, Error = JsonRpcError> + Send + 'static>;
 
 pub trait JsonRpcClient {
     fn version(&self) -> &'static str;
@@ -228,12 +262,26 @@ pub trait JsonRpcClient {
         )
     }
 
+    /// Responses are guaranteed to be in the same order in which they were requested.
     fn send_batch_request<T: DeserializeOwned + Send + 'static>(&self, request: JsonRpcBatchRequest) -> RpcRes<Vec<T>> {
+        try_fu!(self.validate_batch_request(&request));
         let client_info = self.client_info();
         Box::new(
             self.transport(JsonRpcRequestEnum::Batch(request.clone()))
                 .then(move |result| process_transport_batch_result(result, client_info, request)),
         )
+    }
+
+    /// Validates the given batch requests if they all have unique IDs.
+    fn validate_batch_request(&self, request: &JsonRpcBatchRequest) -> Result<(), JsonRpcError> {
+        if request.orig_sequence_ids().all_unique() {
+            return Ok(());
+        }
+        Err(JsonRpcError {
+            client_info: self.client_info(),
+            request: request.clone().into(),
+            error: JsonRpcErrorType::InvalidRequest(ERRL!("Each request in a batch must have a unique ID")),
+        })
     }
 }
 
@@ -286,10 +334,10 @@ fn process_transport_batch_result<T: DeserializeOwned + Send + 'static>(
     client_info: String,
     request: JsonRpcBatchRequest,
 ) -> Result<Vec<T>, JsonRpcError> {
-    let expected_len = request.len();
+    let orig_ids: Vec<_> = request.orig_sequence_ids().collect();
     let request = JsonRpcRequestEnum::Batch(request);
 
-    let (remote_addr, response) = match result {
+    let (remote_addr, batch) = match result {
         Ok((remote_addr, JsonRpcResponseEnum::Batch(batch))) => (remote_addr, batch),
         Ok((remote_addr, JsonRpcResponseEnum::Single(single))) => {
             let error = ERRL!("Expected batch response, found single response: {:?}", single);
@@ -308,11 +356,14 @@ fn process_transport_batch_result<T: DeserializeOwned + Send + 'static>(
         },
     };
 
-    if response.len() != expected_len {
+    // Turn the vector of responses into a hashmap by their IDs to get quick access to the content of the responses.
+    let mut response_map: HashMap<String, JsonRpcResponse> =
+        batch.into_iter().map(|res| (res.id.clone(), res)).collect();
+    if response_map.len() != orig_ids.len() {
         let error = ERRL!(
             "Expected '{}' elements in batch response, found '{}'",
-            expected_len,
-            response.len()
+            orig_ids.len(),
+            response_map.len()
         );
         return Err(JsonRpcError {
             client_info,
@@ -321,10 +372,28 @@ fn process_transport_batch_result<T: DeserializeOwned + Send + 'static>(
         });
     }
 
-    response
-        .into_iter()
-        .map(|resp| process_single_response(client_info.clone(), remote_addr.clone(), request.clone(), resp))
-        .collect()
+    let mut result = Vec::with_capacity(orig_ids.len());
+    for id in orig_ids.iter() {
+        let single_resp = match response_map.remove(id) {
+            Some(res) => res,
+            None => {
+                let error = ERRL!("Batch response doesn't contain '{}' identifier", id);
+                return Err(JsonRpcError {
+                    client_info,
+                    request,
+                    error: JsonRpcErrorType::Parse(remote_addr, error),
+                });
+            },
+        };
+
+        result.push(process_single_response(
+            client_info.clone(),
+            remote_addr.clone(),
+            request.clone(),
+            single_resp,
+        )?);
+    }
+    Ok(result)
 }
 
 fn process_single_response<T: DeserializeOwned + Send + 'static>(

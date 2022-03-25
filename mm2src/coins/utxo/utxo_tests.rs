@@ -6,7 +6,8 @@ use crate::hd_wallet_storage::{HDWalletMockStorage, HDWalletStorageInternalOps};
 use crate::utxo::qtum::{qtum_coin_with_priv_key, QtumCoin, QtumDelegationOps, QtumDelegationRequest};
 use crate::utxo::rpc_clients::{BlockHashOrHeight, ElectrumBalance, ElectrumClient, ElectrumClientImpl,
                                GetAddressInfoRes, ListSinceBlockRes, ListTransactionsItem, NativeClient,
-                               NativeClientImpl, NetworkInfo, UtxoRpcClientOps, ValidateAddressRes, VerboseBlock};
+                               NativeClientImpl, NativeUnspent, NetworkInfo, UtxoRpcClientOps, ValidateAddressRes,
+                               VerboseBlock};
 use crate::utxo::utxo_builder::{UtxoArcBuilder, UtxoCoinBuilderCommonOps};
 use crate::utxo::utxo_common::UtxoTxBuilder;
 use crate::utxo::utxo_standard::{utxo_standard_coin_with_priv_key, UtxoStandardCoin};
@@ -15,6 +16,7 @@ use crate::{CoinBalance, PrivKeyBuildPolicy, StakingInfosDetails, SwapOps, Trade
 use bigdecimal::{BigDecimal, Signed};
 use chain::OutPoint;
 use common::executor::Timer;
+use common::jsonrpc_client::JsonRpcErrorType;
 use common::mm_ctx::MmCtxBuilder;
 use common::privkey::key_pair_from_seed;
 use common::{block_on, now_ms, OrdRange, PagingOptionsEnum, DEX_FEE_ADDR_RAW_PUBKEY};
@@ -3849,4 +3851,85 @@ fn test_electrum_balance_deserializing() {
     let actual: ElectrumBalance = json::from_str(serialized).unwrap();
     assert_eq!(actual.confirmed, i128::MIN);
     assert_eq!(actual.unconfirmed, i128::MAX);
+}
+
+#[test]
+fn test_electrum_display_balances() {
+    let rpc_client = electrum_client_for_test(RICK_ELECTRUM_ADDRS);
+
+    let expected: Vec<(Address, BigDecimal)> = vec![
+        ("RG278CfeNPFtNztFZQir8cgdWexVhViYVy".into(), BigDecimal::from(5.77699)),
+        ("RYPz6Lr4muj4gcFzpMdv3ks1NCGn3mkDPN".into(), BigDecimal::from(0)),
+        ("RJeDDtDRtKUoL8BCKdH7TNCHqUKr7kQRsi".into(), BigDecimal::from(0.77699)),
+        ("RQHn9VPHBqNjYwyKfJbZCiaxVrWPKGQjeF".into(), BigDecimal::from(0.99998)),
+    ];
+
+    let addresses = expected.iter().map(|(address, _)| address.clone()).collect();
+    let actual = rpc_client
+        .display_balances(addresses, TEST_COIN_DECIMALS)
+        .wait()
+        .unwrap();
+
+    assert_eq!(actual, expected);
+
+    let invalid_hashes = vec![
+        "0128a4ea8c5775039d39a192f8490b35b416f2f194cb6b6ee91a41d01233c3b5".to_owned(),
+        "!INVALID!".to_owned(),
+        "457206aa039ed77b223e4623c19152f9aa63aa7845fe93633920607500766931".to_owned(),
+    ];
+
+    let rpc_err = rpc_client.scripthash_get_balances(invalid_hashes).wait().unwrap_err();
+    match rpc_err.error {
+        JsonRpcErrorType::Response(_, json_err) => {
+            let expected = json!({"code": 1, "message": "!INVALID! is not a valid script hash"});
+            assert_eq!(json_err, expected);
+        },
+        _ => panic!("Unexpected `JsonRpcErrorType`"),
+    }
+}
+
+#[test]
+fn test_native_display_balances() {
+    let unspent = vec![
+        NativeUnspent {
+            address: "RG278CfeNPFtNztFZQir8cgdWexVhViYVy".to_owned(),
+            amount: "4.77699".into(),
+            ..NativeUnspent::default()
+        },
+        NativeUnspent {
+            address: "RJeDDtDRtKUoL8BCKdH7TNCHqUKr7kQRsi".to_owned(),
+            amount: "0.77699".into(),
+            ..NativeUnspent::default()
+        },
+        NativeUnspent {
+            address: "RQHn9VPHBqNjYwyKfJbZCiaxVrWPKGQjeF".to_owned(),
+            amount: "0.99998".into(),
+            ..NativeUnspent::default()
+        },
+        NativeUnspent {
+            address: "RG278CfeNPFtNztFZQir8cgdWexVhViYVy".to_owned(),
+            amount: "1".into(),
+            ..NativeUnspent::default()
+        },
+    ];
+
+    NativeClient::list_unspent_impl
+        .mock_safe(move |_, _, _, _| MockResult::Return(Box::new(futures01::future::ok(unspent.clone()))));
+
+    let rpc_client = native_client_for_test();
+
+    let expected: Vec<(Address, BigDecimal)> = vec![
+        ("RG278CfeNPFtNztFZQir8cgdWexVhViYVy".into(), BigDecimal::from(5.77699)),
+        ("RYPz6Lr4muj4gcFzpMdv3ks1NCGn3mkDPN".into(), BigDecimal::from(0)),
+        ("RJeDDtDRtKUoL8BCKdH7TNCHqUKr7kQRsi".into(), BigDecimal::from(0.77699)),
+        ("RQHn9VPHBqNjYwyKfJbZCiaxVrWPKGQjeF".into(), BigDecimal::from(0.99998)),
+    ];
+
+    let addresses = expected.iter().map(|(address, _)| address.clone()).collect();
+    let actual = rpc_client
+        .display_balances(addresses, TEST_COIN_DECIMALS)
+        .wait()
+        .unwrap();
+
+    assert_eq!(actual, expected);
 }

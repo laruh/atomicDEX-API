@@ -2240,7 +2240,9 @@ where
             let electrum_history = match client.scripthash_get_history(&hex::encode(script_hash)).compat().await {
                 Ok(value) => value,
                 Err(e) => match &e.error {
-                    JsonRpcErrorType::Transport(e) | JsonRpcErrorType::Parse(_, e) => {
+                    JsonRpcErrorType::InvalidRequest(e)
+                    | JsonRpcErrorType::Transport(e)
+                    | JsonRpcErrorType::Parse(_, e) => {
                         return RequestTxHistoryResult::Retry {
                             error: ERRL!("Error {} on scripthash_get_history", e),
                         };

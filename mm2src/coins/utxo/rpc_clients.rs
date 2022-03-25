@@ -8,8 +8,8 @@ use bigdecimal::BigDecimal;
 use chain::{BlockHeader, BlockHeaderBits, BlockHeaderNonce, OutPoint, Transaction as UtxoTx};
 use common::custom_futures::{select_ok_sequential, FutureTimerExt};
 use common::executor::{spawn, Timer};
-use common::jsonrpc_client::{JsonRpcBatchResponse, JsonRpcClient, JsonRpcError, JsonRpcErrorType, JsonRpcId,
-                             JsonRpcMultiClient, JsonRpcRemoteAddr, JsonRpcRequest, JsonRpcRequestEnum,
+use common::jsonrpc_client::{BatchRequest, JsonRpcBatchResponse, JsonRpcClient, JsonRpcError, JsonRpcErrorType,
+                             JsonRpcId, JsonRpcMultiClient, JsonRpcRemoteAddr, JsonRpcRequest, JsonRpcRequestEnum,
                              JsonRpcResponse, JsonRpcResponseEnum, JsonRpcResponseFut, RpcRes};
 use common::log::{error, info, warn};
 use common::mm_error::prelude::*;
@@ -25,6 +25,7 @@ use futures01::future::select_ok;
 use futures01::sync::{mpsc, oneshot};
 use futures01::{Future, Sink, Stream};
 use http::Uri;
+use itertools::Itertools;
 use keys::hash::H256;
 use keys::{Address, Type as ScriptType};
 #[cfg(test)] use mocktopus::macros::*;
@@ -238,6 +239,7 @@ pub enum UtxoRpcError {
 impl From<JsonRpcError> for UtxoRpcError {
     fn from(e: JsonRpcError) -> Self {
         match e.error {
+            JsonRpcErrorType::InvalidRequest(_) => UtxoRpcError::Internal(e.to_string()),
             JsonRpcErrorType::Transport(_) => UtxoRpcError::Transport(e),
             JsonRpcErrorType::Parse(_, _) | JsonRpcErrorType::Response(_, _) => UtxoRpcError::ResponseParseError(e),
         }
@@ -268,6 +270,8 @@ pub trait UtxoRpcClientOps: fmt::Debug + Send + Sync + 'static {
     fn get_block_count(&self) -> UtxoRpcFut<u64>;
 
     fn display_balance(&self, address: Address, decimals: u8) -> RpcRes<BigDecimal>;
+
+    fn display_balances(&self, addresses: Vec<Address>, decimals: u8) -> RpcRes<Vec<(Address, BigDecimal)>>;
 
     /// returns fee estimation per KByte in satoshis
     fn estimate_fee_sat(
@@ -300,6 +304,7 @@ pub trait UtxoRpcClientOps: fmt::Debug + Send + Sync + 'static {
 }
 
 #[derive(Clone, Deserialize, Debug)]
+#[cfg_attr(test, derive(Default))]
 pub struct NativeUnspent {
     pub txid: H256Json,
     pub vout: u32,
@@ -667,6 +672,35 @@ impl UtxoRpcClientOps for NativeClient {
                     unspents
                         .iter()
                         .fold(BigDecimal::from(0), |sum, unspent| sum + unspent.amount.to_decimal())
+                }),
+        )
+    }
+
+    fn display_balances(&self, addresses: Vec<Address>, _decimals: u8) -> RpcRes<Vec<(Address, BigDecimal)>> {
+        let addresses_str: Vec<_> = addresses.iter().map(ToString::to_string).collect();
+        Box::new(
+            self.list_unspent_impl(0, i32::MAX, addresses_str.clone())
+                .map(move |unspents| {
+                    // First, calculate the balance of each address returned from `NativeClient::list_unspent_impl`.
+                    let balances: HashMap<String, BigDecimal> = unspents
+                        .into_iter()
+                        // Group `NativeUnspent` by the addresses.
+                        .into_grouping_map_by(|unspent| unspent.address.clone())
+                        // Fold `Vec<NativeUnspent>` related to one particular address to get the total balance of that address.
+                        .fold(BigDecimal::from(0), |sum, _key, unspent| {
+                            sum + unspent.amount.to_decimal()
+                        });
+                    // Secondly, iterate over the requested `addresses` and try to find corresponding balance.
+                    addresses
+                        .into_iter()
+                        .zip(addresses_str)
+                        .map(|(address, address_str)| {
+                            // If `balances` doesn't contain `address`, there are no unspents related to the address.
+                            // Consider the balance of that address equal to 0.
+                            let balance = balances.get(&address_str).cloned().unwrap_or_default();
+                            (address, balance)
+                        })
+                        .collect()
                 }),
         )
     }
@@ -1629,6 +1663,16 @@ impl ElectrumClient {
         Box::new(fut.boxed().compat())
     }
 
+    pub fn scripthash_get_balances<I>(&self, hashes: I) -> RpcRes<Vec<ElectrumBalance>>
+    where
+        I: IntoIterator<Item = String>,
+    {
+        hashes
+            .into_iter()
+            .map(|hash| rpc_req!(self, "blockchain.scripthash.get_balance", &hash))
+            .batch_rpc(self)
+    }
+
     /// https://electrumx.readthedocs.io/en/latest/protocol-methods.html#blockchain-headers-subscribe
     pub fn blockchain_headers_subscribe(&self) -> RpcRes<ElectrumBlockHeader> {
         rpc_func!(self, "blockchain.headers.subscribe")
@@ -1741,6 +1785,24 @@ impl UtxoRpcClientOps for ElectrumClient {
         Box::new(self.scripthash_get_balance(&hash_str).map(move |result| {
             let balance_sat = BigInt::from(result.confirmed) + BigInt::from(result.unconfirmed);
             BigDecimal::from(balance_sat) / BigDecimal::from(10u64.pow(decimals as u32))
+        }))
+    }
+
+    fn display_balances(&self, addresses: Vec<Address>, decimals: u8) -> RpcRes<Vec<(Address, BigDecimal)>> {
+        let hashes = addresses.iter().map(|address| {
+            let hash = electrum_script_hash(&output_script(address, ScriptType::P2PKH));
+            hex::encode(hash)
+        });
+        Box::new(self.scripthash_get_balances(hashes).map(move |results| {
+            results
+                .into_iter()
+                .zip(addresses)
+                .map(|(result, address)| {
+                    let balance_sat = BigInt::from(result.confirmed) + BigInt::from(result.unconfirmed);
+                    let balance_dec = BigDecimal::from(balance_sat) / BigDecimal::from(10u64.pow(decimals as u32));
+                    (address, balance_dec)
+                })
+                .collect()
         }))
     }
 
