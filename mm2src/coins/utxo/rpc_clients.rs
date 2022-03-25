@@ -2210,7 +2210,7 @@ async fn connect_loop(
 async fn connect_loop(
     _config: ElectrumConfig,
     addr: String,
-    responses: Arc<AsyncMutex<HashMap<String, async_oneshot::Sender<JsonRpcResponse>>>>,
+    responses: JsonRpcPendingRequestsShared,
     connection_tx: Arc<AsyncMutex<Option<mpsc::Sender<Vec<u8>>>>>,
     event_handlers: Vec<RpcTransportEventHandlerShared>,
 ) -> Result<(), ()> {
