@@ -76,6 +76,15 @@ fn ten_f64() -> f64 { 10. }
 
 fn one_hundred() -> usize { 100 }
 
+pub enum ValidatePaymentConfirmationStatus {
+    NotRequired,
+    ValidatedAt { confirmed_block: u64 },
+}
+
+impl From<u64> for ValidatePaymentConfirmationStatus {
+    fn from(confirmed_block: u64) -> Self { ValidatePaymentConfirmationStatus::ValidatedAt { confirmed_block } }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct UtxoMergeParams {
     merge_at: usize,
@@ -1484,6 +1493,11 @@ where
     let mut tx: UtxoTx = try_fus!(deserialize(input.payment_tx.as_slice()).map_err(|e| ERRL!("{:?}", e)));
     tx.tx_hash_algo = coin.as_ref().tx_hash_algo;
 
+    let confirmation_status = match input.confirmations {
+        0 => ValidatePaymentConfirmationStatus::NotRequired,
+        _ => input.confirmed_block.into(),
+    };
+
     validate_payment(
         coin.clone(),
         tx,
@@ -1493,7 +1507,7 @@ where
         &input.secret_hash,
         input.amount,
         input.time_lock,
-        input.confirmations,
+        confirmation_status,
     )
 }
 
@@ -1507,7 +1521,10 @@ where
     let my_public = try_fus!(Public::from_slice(&input.maker_pub));
     let mut tx: UtxoTx = try_fus!(deserialize(input.payment_tx.as_slice()).map_err(|e| ERRL!("{:?}", e)));
     tx.tx_hash_algo = coin.as_ref().tx_hash_algo;
-
+    let confirmation_status = match input.confirmations {
+        0 => ValidatePaymentConfirmationStatus::NotRequired,
+        _ => input.confirmed_block.into(),
+    };
     validate_payment(
         coin.clone(),
         tx,
@@ -1517,7 +1534,7 @@ where
         &input.secret_hash,
         input.amount,
         input.time_lock,
-        input.confirmations,
+        confirmation_status,
     )
 }
 
@@ -1713,7 +1730,7 @@ pub fn wait_for_confirmations(
     requires_nota: bool,
     wait_until: u64,
     check_every: u64,
-) -> Box<dyn Future<Item = (), Error = String> + Send> {
+) -> Box<dyn Future<Item = u64, Error = String> + Send> {
     let mut tx: UtxoTx = try_fus!(deserialize(tx).map_err(|e| ERRL!("{:?}", e)));
     tx.tx_hash_algo = coin.tx_hash_algo;
     coin.rpc_client.wait_for_confirmations(
@@ -3011,7 +3028,7 @@ pub fn address_from_pubkey(
     }
 }
 
-pub async fn validate_spv_proof<T>(coin: T, tx: UtxoTx) -> Result<(), MmError<SPVError>>
+pub async fn validate_spv_proof<T>(coin: T, tx: UtxoTx, height: u64) -> Result<(), MmError<SPVError>>
 where
     T: AsRef<UtxoCoinFields> + Send + Sync + 'static,
 {
@@ -3022,7 +3039,6 @@ where
     if tx.outputs.is_empty() {
         return MmError::err(SPVError::InvalidVout);
     }
-    let height = get_tx_height(&tx, client).await?;
     let block_header = block_header_from_storage_or_rpc(&coin, height, &coin.as_ref().block_headers_storage)
         .await
         .map_err(|_e| SPVError::UnableToGetHeader)?;
@@ -3075,7 +3091,7 @@ pub fn validate_payment<T>(
     priv_bn_hash: &[u8],
     amount: BigDecimal,
     time_lock: u32,
-    confirmations: u64,
+    confirmation_status: ValidatePaymentConfirmationStatus,
 ) -> Box<dyn Future<Item = (), Error = String> + Send>
 where
     T: AsRef<UtxoCoinFields> + Send + Sync + 'static,
@@ -3131,9 +3147,13 @@ where
                     expected_output
                 );
             }
-            return match confirmations {
-                0 => Ok(()),
-                _ => validate_spv_proof(coin, tx).await.map_err(|e| format!("{:?}", e)),
+            return match confirmation_status {
+                ValidatePaymentConfirmationStatus::NotRequired => Ok(()),
+                ValidatePaymentConfirmationStatus::ValidatedAt { confirmed_block } => {
+                    validate_spv_proof(coin, tx, confirmed_block)
+                        .await
+                        .map_err(|e| format!("{:?}", e))
+                },
             };
         }
     };

@@ -133,6 +133,7 @@ fn test_validate_maker_payment() {
         amount: correct_amount.clone(),
         swap_contract_address: coin.swap_contract_address(),
         confirmations: 1,
+        confirmed_block: 686820,
     };
 
     coin.validate_maker_payment(input.clone()).wait().unwrap();
@@ -853,6 +854,7 @@ fn test_validate_maker_payment_malicious() {
         amount,
         swap_contract_address: coin.swap_contract_address(),
         confirmations: 1,
+        confirmed_block: 710401,
     };
     let error = coin
         .validate_maker_payment(input)

@@ -1126,7 +1126,7 @@ impl MarketCoinOps for EthCoin {
         _requires_nota: bool,
         wait_until: u64,
         check_every: u64,
-    ) -> Box<dyn Future<Item = (), Error = String> + Send> {
+    ) -> Box<dyn Future<Item = u64, Error = String> + Send> {
         let ctx = try_fus!(MmArc::from_weak(&self.ctx).ok_or("No context"));
         let mut status = ctx.log.status_handle();
         status.status(&[&self.ticker], "Waiting for confirmations…");
@@ -1179,7 +1179,7 @@ impl MarketCoinOps for EthCoin {
                         // checking if the current block is above the confirmed_at block prediction for pos chain to prevent overflow
                         if current_block >= confirmed_at && current_block - confirmed_at + 1 >= required_confirms {
                             status.append(" Confirmed.");
-                            return Ok(());
+                            return Ok(current_block.as_u64());
                         }
                     }
                 }

@@ -301,7 +301,7 @@ pub struct ValidateHtlcInput {
     time_lock: u32,
     secret_hash: Vec<u8>,
     amount: BigDecimal,
-    confirmations: u64,
+    confirmed_block: u64,
 }
 
 impl SlpToken {
@@ -494,7 +494,7 @@ impl SlpToken {
             &input.secret_hash,
             self.platform_dust_dec(),
             input.time_lock,
-            input.confirmations,
+            input.confirmed_block.into(),
         );
 
         validate_fut
@@ -1103,7 +1103,7 @@ impl MarketCoinOps for SlpToken {
         requires_nota: bool,
         wait_until: u64,
         check_every: u64,
-    ) -> Box<dyn Future<Item = (), Error = String> + Send> {
+    ) -> Box<dyn Future<Item = u64, Error = String> + Send> {
         self.platform_coin
             .wait_for_confirmations(tx, confirmations, requires_nota, wait_until, check_every)
     }
@@ -1346,7 +1346,7 @@ impl SwapOps for SlpToken {
         let secret_hash = input.secret_hash.to_owned();
         let time_lock = input.time_lock;
         let amount = input.amount;
-        let confirmations = input.confirmations;
+        let confirmed_block = input.confirmed_block;
 
         let coin = self.clone();
         let input = ValidateHtlcInput {
@@ -1356,7 +1356,7 @@ impl SwapOps for SlpToken {
             time_lock,
             secret_hash,
             amount,
-            confirmations,
+            confirmed_block,
         };
         let fut = async move {
             try_s!(coin.validate_htlc(input).await);
@@ -1368,7 +1368,7 @@ impl SwapOps for SlpToken {
     fn validate_taker_payment(&self, input: ValidatePaymentInput) -> Box<dyn Future<Item = (), Error = String> + Send> {
         let taker_pub = try_fus!(Public::from_slice(&input.taker_pub));
         let maker_pub = try_fus!(Public::from_slice(&input.maker_pub));
-        let confirmations = input.confirmations;
+        let confirmed_block = input.confirmed_block;
 
         let coin = self.clone();
         let input = ValidateHtlcInput {
@@ -1378,7 +1378,7 @@ impl SwapOps for SlpToken {
             time_lock: input.time_lock,
             secret_hash: input.secret_hash,
             amount: input.amount,
-            confirmations,
+            confirmed_block,
         };
         let fut = async move {
             try_s!(coin.validate_htlc(input).await);
@@ -1962,7 +1962,7 @@ mod slp_tests {
             time_lock: lock_time,
             secret_hash,
             amount,
-            confirmations: 1,
+            confirmed_block: 1453354,
         };
         block_on(fusd.validate_htlc(input)).unwrap();
     }
@@ -2059,7 +2059,7 @@ mod slp_tests {
             &secret_hash,
             fusd.platform_dust_dec(),
             lock_time,
-            1,
+            1468170.into(),
         )
         .wait()
         .unwrap();
@@ -2071,7 +2071,7 @@ mod slp_tests {
             time_lock: lock_time,
             secret_hash,
             amount,
-            confirmations: 1,
+            confirmed_block: 1468170,
         };
         let validity_err = block_on(fusd.validate_htlc(input)).unwrap_err();
         match validity_err.into_inner() {

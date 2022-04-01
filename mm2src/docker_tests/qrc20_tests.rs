@@ -194,7 +194,7 @@ fn test_taker_spends_maker_payment() {
     let requires_nota = false;
     let wait_until = (now_ms() / 1000) + 40; // timeout if test takes more than 40 seconds to run
     let check_every = 1;
-    taker_coin
+    let confirmed_block = taker_coin
         .wait_for_confirmations(&payment_tx_hex, confirmations, requires_nota, wait_until, check_every)
         .wait()
         .unwrap();
@@ -208,6 +208,7 @@ fn test_taker_spends_maker_payment() {
         amount: amount.clone(),
         swap_contract_address: taker_coin.swap_contract_address(),
         confirmations,
+        confirmed_block,
     };
     taker_coin.validate_maker_payment(input).wait().unwrap();
 
@@ -285,7 +286,7 @@ fn test_maker_spends_taker_payment() {
     let requires_nota = false;
     let wait_until = (now_ms() / 1000) + 40; // timeout if test takes more than 40 seconds to run
     let check_every = 1;
-    maker_coin
+    let confirmed_block = maker_coin
         .wait_for_confirmations(&payment_tx_hex, confirmations, requires_nota, wait_until, check_every)
         .wait()
         .unwrap();
@@ -299,6 +300,7 @@ fn test_maker_spends_taker_payment() {
         amount: amount.clone(),
         swap_contract_address: maker_coin.swap_contract_address(),
         confirmations,
+        confirmed_block,
     };
     maker_coin.validate_taker_payment(input).wait().unwrap();
 

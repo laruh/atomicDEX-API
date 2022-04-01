@@ -1105,13 +1105,16 @@ impl TakerSwap {
             self.r().data.maker_payment_wait,
             WAIT_CONFIRM_INTERVAL,
         );
-        if let Err(err) = f.compat().await {
-            return Ok((Some(TakerSwapCommand::Finish), vec![
-                TakerSwapEvent::MakerPaymentWaitConfirmFailed(
-                    ERRL!("!wait for maker payment confirmations: {}", err).into(),
-                ),
-            ]));
-        }
+        let confirmed_block = match f.compat().await {
+            Ok(confirmed_block) => confirmed_block,
+            Err(err) => {
+                return Ok((Some(TakerSwapCommand::Finish), vec![
+                    TakerSwapEvent::MakerPaymentWaitConfirmFailed(
+                        ERRL!("!wait for maker payment confirmations: {}", err).into(),
+                    ),
+                ]));
+            },
+        };
         log!({ "After wait confirm" });
 
         let validate_input = ValidatePaymentInput {
@@ -1123,6 +1126,7 @@ impl TakerSwap {
             amount: self.maker_amount.to_decimal(),
             swap_contract_address: self.r().data.maker_coin_swap_contract_address.clone(),
             confirmations,
+            confirmed_block,
         };
         let validated = self.maker_coin.validate_maker_payment(validate_input).compat().await;
 

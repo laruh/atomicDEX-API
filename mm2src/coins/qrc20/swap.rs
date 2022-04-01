@@ -349,9 +349,9 @@ impl Qrc20Coin {
         requires_nota: bool,
         wait_until: u64,
         check_every: u64,
-    ) -> Result<(), String> {
+    ) -> Result<u64, String> {
         let tx_hash = H256Json::from(qtum_tx.hash().reversed());
-        try_s!(
+        let block = try_s!(
             self.utxo
                 .rpc_client
                 .wait_for_confirmations(
@@ -390,7 +390,7 @@ impl Qrc20Coin {
             try_s!(check_if_contract_call_completed(&receipt));
         }
 
-        Ok(())
+        Ok(block)
     }
 
     /// Generate `ContractCallOutput` outputs required to send a swap payment.

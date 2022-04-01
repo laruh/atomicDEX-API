@@ -406,7 +406,7 @@ impl MarketCoinOps for LightningCoin {
         _requires_nota: bool,
         _wait_until: u64,
         _check_every: u64,
-    ) -> Box<dyn Future<Item = (), Error = String> + Send> {
+    ) -> Box<dyn Future<Item = u64, Error = String> + Send> {
         unimplemented!()
     }
 

@@ -1064,7 +1064,7 @@ impl MarketCoinOps for Qrc20Coin {
         requires_nota: bool,
         wait_until: u64,
         check_every: u64,
-    ) -> Box<dyn Future<Item = (), Error = String> + Send> {
+    ) -> Box<dyn Future<Item = u64, Error = String> + Send> {
         let tx: UtxoTx = try_fus!(deserialize(tx).map_err(|e| ERRL!("{:?}", e)));
         let selfi = self.clone();
         let fut = async move {

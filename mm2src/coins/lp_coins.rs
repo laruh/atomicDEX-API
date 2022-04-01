@@ -258,6 +258,7 @@ pub struct ValidatePaymentInput {
     pub amount: BigDecimal,
     pub swap_contract_address: Option<BytesJson>,
     pub confirmations: u64,
+    pub confirmed_block: u64,
 }
 
 /// Swap operations (mostly based on the Hash/Time locked transactions implemented by coin wallets).
@@ -429,7 +430,7 @@ pub trait MarketCoinOps {
         requires_nota: bool,
         wait_until: u64,
         check_every: u64,
-    ) -> Box<dyn Future<Item = (), Error = String> + Send>;
+    ) -> Box<dyn Future<Item = u64, Error = String> + Send>;
 
     fn wait_for_tx_spend(
         &self,

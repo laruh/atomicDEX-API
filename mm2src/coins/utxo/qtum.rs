@@ -684,7 +684,7 @@ impl MarketCoinOps for QtumCoin {
         requires_nota: bool,
         wait_until: u64,
         check_every: u64,
-    ) -> Box<dyn Future<Item = (), Error = String> + Send> {
+    ) -> Box<dyn Future<Item = u64, Error = String> + Send> {
         utxo_common::wait_for_confirmations(
             &self.utxo_arc,
             tx,

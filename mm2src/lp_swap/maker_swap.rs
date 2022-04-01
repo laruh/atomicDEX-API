@@ -779,16 +779,19 @@ impl MakerSwap {
                 WAIT_CONFIRM_INTERVAL,
             )
             .compat();
-        if let Err(err) = wait_f.await {
-            return Ok((Some(MakerSwapCommand::RefundMakerPayment), vec![
-                MakerSwapEvent::TakerPaymentWaitConfirmFailed(
-                    ERRL!("!taker_coin.wait_for_confirmations: {}", err).into(),
-                ),
-                MakerSwapEvent::MakerPaymentWaitRefundStarted {
-                    wait_until: self.wait_refund_until(),
-                },
-            ]));
-        }
+        let confirmed_block = match wait_f.await {
+            Ok(confirmed_block) => confirmed_block,
+            Err(err) => {
+                return Ok((Some(MakerSwapCommand::RefundMakerPayment), vec![
+                    MakerSwapEvent::TakerPaymentWaitConfirmFailed(
+                        ERRL!("!taker_coin.wait_for_confirmations: {}", err).into(),
+                    ),
+                    MakerSwapEvent::MakerPaymentWaitRefundStarted {
+                        wait_until: self.wait_refund_until(),
+                    },
+                ]))
+            },
+        };
 
         let validate_input = ValidatePaymentInput {
             payment_tx: self.r().taker_payment.clone().unwrap().tx_hex.0,
@@ -799,6 +802,7 @@ impl MakerSwap {
             amount: self.taker_amount.clone(),
             swap_contract_address: self.r().data.taker_coin_swap_contract_address.clone(),
             confirmations,
+            confirmed_block,
         };
         let validated_f = self.taker_coin.validate_taker_payment(validate_input).compat();
 
