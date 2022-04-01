@@ -108,3 +108,4 @@ pub fn migrate_sqlite_database(ctx: &MmArc, conn: &Connection, mut current_migra
     info!("migrate_sqlite_database complete, migrated to {}", current_migration);
     Ok(())
 }
+
