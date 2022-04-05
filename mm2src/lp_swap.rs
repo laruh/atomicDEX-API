@@ -131,7 +131,6 @@ pub enum SwapMsg {
     TakerFee(Vec<u8>),
     MakerPayment(Vec<u8>),
     TakerPayment(Vec<u8>),
-    Transaction(Vec<u8>),
 }
 
 #[derive(Debug, Default)]
@@ -192,6 +191,16 @@ pub fn broadcast_swap_message(ctx: &MmArc, topic: String, msg: SwapMsg, p2p_priv
     broadcast_p2p_msg(ctx, vec![topic], encoded_msg);
 }
 
+pub fn broadcast_transaction_message(ctx: &MmArc, topic: String, msg: Vec<u8>, p2p_privkey: &Option<H256Json>) {
+    let p2p_private = match p2p_privkey {
+        Some(privkey) => privkey.0,
+        None => ctx.secp256k1_key_pair.or(&&|| panic!()).private().secret.take(),
+    };
+
+    let encoded_msg = encode_and_sign(&msg, &p2p_private).unwrap();
+    broadcast_p2p_msg(ctx, vec![topic], encoded_msg);
+}
+
 pub async fn process_msg(ctx: MmArc, topic: &str, msg: &[u8]) {
     let uuid = match Uuid::from_str(topic) {
         Ok(u) => u,
@@ -230,7 +239,6 @@ pub async fn process_msg(ctx: MmArc, topic: &str, msg: &[u8]) {
                 SwapMsg::TakerFee(taker_fee) => msg_store.taker_fee = Some(taker_fee),
                 SwapMsg::MakerPayment(maker_payment) => msg_store.maker_payment = Some(maker_payment),
                 SwapMsg::TakerPayment(taker_payment) => msg_store.taker_payment = Some(taker_payment),
-                SwapMsg::Transaction(transaction) => msg_store.transaction = Some(transaction),
             }
         } else {
             warn!("Received message from unexpected sender for swap {}", uuid);

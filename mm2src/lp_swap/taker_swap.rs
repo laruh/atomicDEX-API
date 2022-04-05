@@ -10,7 +10,7 @@ use super::{broadcast_my_swap_status, broadcast_swap_message_every, check_other_
             SwapConfirmationsSettings, SwapError, SwapMsg, SwapsContext, TransactionIdentifier, WAIT_CONFIRM_INTERVAL};
 use crate::mm2::lp_network::subscribe_to_topic;
 use crate::mm2::lp_ordermatch::{MatchBy, OrderConfirmationsSettings, TakerAction, TakerOrderBuilder};
-use crate::mm2::lp_swap::{broadcast_swap_message, tx_helper_topic};
+use crate::mm2::lp_swap::{broadcast_transaction_message, tx_helper_topic};
 use crate::mm2::MM_VERSION;
 use bigdecimal::BigDecimal;
 use coins::{lp_coinfind, CanRefundHtlc, FeeApproxStage, FoundSwapTxSpend, MmCoinEnum, TradeFee, TradePreimageValue,
@@ -1288,10 +1288,10 @@ impl TakerSwap {
             },
         };
 
-        broadcast_swap_message(
+        broadcast_transaction_message(
             &self.ctx,
             tx_helper_topic(self.maker_coin.ticker()),
-            SwapMsg::Transaction(transaction.tx_hex()),
+            transaction.tx_hex(),
             &self.p2p_privkey,
         );
 
@@ -1338,10 +1338,10 @@ impl TakerSwap {
             },
         };
 
-        broadcast_swap_message(
+        broadcast_transaction_message(
             &self.ctx,
             tx_helper_topic(self.taker_coin.ticker()),
-            SwapMsg::Transaction(transaction.tx_hex()),
+            transaction.tx_hex(),
             &self.p2p_privkey,
         );
 
