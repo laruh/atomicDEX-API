@@ -222,6 +222,10 @@ impl MarketCoinOps for SplToken {
         self.platform_coin.send_raw_tx(tx)
     }
 
+    fn send_raw_tx_bytes(&self, tx: &[u8]) -> Box<dyn Future<Item = String, Error = String> + Send> {
+        self.platform_coin.send_raw_tx_bytes(tx)
+    }
+
     fn wait_for_confirmations(
         &self,
         _tx: &[u8],

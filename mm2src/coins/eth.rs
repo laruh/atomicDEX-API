@@ -1119,6 +1119,20 @@ impl MarketCoinOps for EthCoin {
         )
     }
 
+    fn send_raw_tx_bytes(&self, mut tx: &[u8]) -> Box<dyn Future<Item = String, Error = String> + Send> {
+        if tx.starts_with(b"0x") {
+            tx = &tx[2..];
+        }
+
+        Box::new(
+            self.web3
+                .eth()
+                .send_raw_transaction(tx.into())
+                .map(|res| format!("{:02x}", res))
+                .map_err(|e| ERRL!("{}", e)),
+        )
+    }
+
     fn wait_for_confirmations(
         &self,
         tx: &[u8],

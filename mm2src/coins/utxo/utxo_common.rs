@@ -1706,6 +1706,15 @@ pub fn send_raw_tx(coin: &UtxoCoinFields, tx: &str) -> Box<dyn Future<Item = Str
     )
 }
 
+pub fn send_raw_tx_bytes(coin: &UtxoCoinFields, tx: &[u8]) -> Box<dyn Future<Item = String, Error = String> + Send> {
+    Box::new(
+        coin.rpc_client
+            .send_raw_transaction(tx.into())
+            .map_err(|e| ERRL!("{}", e))
+            .map(|hash| format!("{:?}", hash)),
+    )
+}
+
 pub fn wait_for_confirmations(
     coin: &UtxoCoinFields,
     tx: &[u8],

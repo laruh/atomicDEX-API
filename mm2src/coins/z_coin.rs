@@ -733,6 +733,10 @@ impl MarketCoinOps for ZCoin {
         utxo_common::send_raw_tx(self.as_ref(), tx)
     }
 
+    fn send_raw_tx_bytes(&self, tx: &[u8]) -> Box<dyn Future<Item = String, Error = String> + Send> {
+        utxo_common::send_raw_tx_bytes(self.as_ref(), tx)
+    }
+
     fn wait_for_confirmations(
         &self,
         tx: &[u8],

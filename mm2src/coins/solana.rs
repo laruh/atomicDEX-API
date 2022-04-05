@@ -373,6 +373,19 @@ impl MarketCoinOps for SolanaCoin {
         Box::new(fut.boxed().compat())
     }
 
+    fn send_raw_tx_bytes(&self, tx: &[u8]) -> Box<dyn Future<Item = String, Error = String> + Send> {
+        let coin = self.clone();
+        let tx = tx.to_owned();
+        let fut = async move {
+            let tx: Transaction = deserialize(tx.as_slice())
+                .map_to_mm(|e| e)
+                .map_err(|e| format!("{:?}", e))?;
+            let signature = coin.rpc().send_transaction(&tx).await.map_err(|e| format!("{:?}", e))?;
+            Ok(signature.to_string())
+        };
+        Box::new(fut.boxed().compat())
+    }
+
     fn wait_for_confirmations(
         &self,
         _tx: &[u8],
