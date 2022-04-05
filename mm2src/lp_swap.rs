@@ -114,6 +114,8 @@ pub use trade_preimage::trade_preimage_rpc;
 
 pub const SWAP_PREFIX: TopicPrefix = "swap";
 
+pub const TX_HELPER_PREFIX: TopicPrefix = "txhlp";
+
 cfg_wasm32! {
     use common::indexed_db::{ConstructibleDb, DbLocked};
     use swap_wasm_db::{InitDbResult, SwapDb};
@@ -129,6 +131,7 @@ pub enum SwapMsg {
     TakerFee(Vec<u8>),
     MakerPayment(Vec<u8>),
     TakerPayment(Vec<u8>),
+    Transaction(Vec<u8>),
 }
 
 #[derive(Debug, Default)]
@@ -139,6 +142,7 @@ pub struct SwapMsgStore {
     taker_fee: Option<Vec<u8>>,
     maker_payment: Option<Vec<u8>>,
     taker_payment: Option<Vec<u8>>,
+    transaction: Option<Vec<u8>>,
     accept_only_from: bits256,
 }
 
@@ -226,6 +230,7 @@ pub async fn process_msg(ctx: MmArc, topic: &str, msg: &[u8]) {
                 SwapMsg::TakerFee(taker_fee) => msg_store.taker_fee = Some(taker_fee),
                 SwapMsg::MakerPayment(maker_payment) => msg_store.maker_payment = Some(maker_payment),
                 SwapMsg::TakerPayment(taker_payment) => msg_store.taker_payment = Some(taker_payment),
+                SwapMsg::Transaction(transaction) => msg_store.transaction = Some(transaction),
             }
         } else {
             warn!("Received message from unexpected sender for swap {}", uuid);
@@ -234,6 +239,16 @@ pub async fn process_msg(ctx: MmArc, topic: &str, msg: &[u8]) {
 }
 
 pub fn swap_topic(uuid: &Uuid) -> String { pub_sub_topic(SWAP_PREFIX, &uuid.to_string()) }
+
+/// Formats and returns a topic format for `txhlp`.
+///
+/// # Usage
+/// ```ignore
+/// let topic = tx_helper_topic("BTC");
+/// // Returns topic format `txhlp/BTC` as String type.
+/// ```
+#[inline(always)]
+pub fn tx_helper_topic(coin: &str) -> String { pub_sub_topic(TX_HELPER_PREFIX, coin) }
 
 async fn recv_swap_msg<T>(
     ctx: MmArc,
