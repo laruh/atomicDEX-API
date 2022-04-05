@@ -18,7 +18,7 @@ use coins::lp_coinfind;
 //  marketmaker
 //
 use common::executor::spawn;
-use common::log;
+use common::{log, Future01CompatExt};
 use common::mm_ctx::{MmArc, MmWeak};
 use common::mm_error::prelude::*;
 use common::mm_metrics::{ClockOps, MetricsOps};
@@ -140,8 +140,11 @@ async fn process_p2p_message(
             },
             Some(lp_swap::TX_HELPER_PREFIX) => {
                 if let Some(pair) = split.next() {
-                    if lp_coinfind(&ctx, pair).await.is_ok() {
-                        to_propagate = true;
+                    if let Ok(Some(coin)) = lp_coinfind(&ctx, pair).await {
+                        match coin.send_raw_tx_bytes(&message.data).compat().await {
+                            Ok(id) => log::info!("Transaction broadcasted successfully: {:?} ", id),
+                            Err(_) => todo!(),
+                        }
                     }
                 }
             },
