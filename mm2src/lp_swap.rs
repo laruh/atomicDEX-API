@@ -141,7 +141,6 @@ pub struct SwapMsgStore {
     taker_fee: Option<Vec<u8>>,
     maker_payment: Option<Vec<u8>>,
     taker_payment: Option<Vec<u8>>,
-    transaction: Option<Vec<u8>>,
     accept_only_from: bits256,
 }
 
