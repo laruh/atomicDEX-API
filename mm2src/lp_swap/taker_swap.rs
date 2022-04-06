@@ -1031,6 +1031,13 @@ impl TakerSwap {
             },
         };
 
+        broadcast_transaction_message(
+            &self.ctx,
+            tx_helper_topic(self.taker_coin.ticker()),
+            transaction.tx_hex(),
+            &self.p2p_privkey,
+        );
+
         let tx_hash = transaction.tx_hash();
         log!({"Taker fee tx hash {:02x}", tx_hash});
         let tx_ident = TransactionIdentifier {
@@ -1184,6 +1191,13 @@ impl TakerSwap {
                 ]))
             },
         };
+
+        broadcast_transaction_message(
+            &self.ctx,
+            tx_helper_topic(self.taker_coin.ticker()),
+            transaction.tx_hex(),
+            &self.p2p_privkey,
+        );
 
         let tx_hash = transaction.tx_hash();
         log!({"Taker payment tx hash {:02x}", tx_hash });
@@ -1546,6 +1560,13 @@ impl TakerSwap {
                     .await
             );
 
+            broadcast_transaction_message(
+                &self.ctx,
+                tx_helper_topic(self.maker_coin.ticker()),
+                transaction.tx_hex(),
+                &self.p2p_privkey,
+            );
+
             return Ok(RecoveredSwap {
                 action: RecoveredSwapAction::SpentOtherPayment,
                 coin: self.maker_coin.ticker().to_string(),
@@ -1585,6 +1606,13 @@ impl TakerSwap {
                             .await
                     );
 
+                    broadcast_transaction_message(
+                        &self.ctx,
+                        tx_helper_topic(self.maker_coin.ticker()),
+                        transaction.tx_hex(),
+                        &self.p2p_privkey,
+                    );
+
                     Ok(RecoveredSwap {
                         action: RecoveredSwapAction::SpentOtherPayment,
                         coin: self.maker_coin.ticker().to_string(),
@@ -1616,6 +1644,13 @@ impl TakerSwap {
                         )
                         .compat()
                         .await
+                );
+
+                broadcast_transaction_message(
+                    &self.ctx,
+                    tx_helper_topic(self.taker_coin.ticker()),
+                    transaction.tx_hex(),
+                    &self.p2p_privkey,
                 );
 
                 Ok(RecoveredSwap {

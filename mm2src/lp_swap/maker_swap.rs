@@ -681,6 +681,13 @@ impl MakerSwap {
             },
         };
 
+        broadcast_transaction_message(
+            &self.ctx,
+            tx_helper_topic(self.maker_coin.ticker()),
+            transaction.tx_hex(),
+            &self.p2p_privkey,
+        );
+
         let tx_hash = transaction.tx_hash();
         log!({ "Maker payment tx {:02x}", tx_hash });
 
@@ -1159,6 +1166,14 @@ impl MakerSwap {
             Ok(Some(FoundSwapTxSpend::Spent(_))) => {
                 log!("Warning: MakerPayment spent, but TakerPayment is not yet. Trying to spend TakerPayment");
                 let transaction = try_s!(try_spend_taker_payment(self, &secret_hash.0).await);
+
+                broadcast_transaction_message(
+                    &self.ctx,
+                    tx_helper_topic(self.taker_coin.ticker()),
+                    transaction.tx_hex(),
+                    &self.p2p_privkey,
+                );
+
                 Ok(RecoveredSwap {
                     action: RecoveredSwapAction::SpentOtherPayment,
                     coin: self.taker_coin.ticker().to_string(),
@@ -1192,6 +1207,13 @@ impl MakerSwap {
                         )
                         .compat()
                         .await
+                );
+
+                broadcast_transaction_message(
+                    &self.ctx,
+                    tx_helper_topic(self.maker_coin.ticker()),
+                    transaction.tx_hex(),
+                    &self.p2p_privkey,
                 );
 
                 Ok(RecoveredSwap {
