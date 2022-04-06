@@ -1,4 +1,3 @@
-use coins::lp_coinfind;
 /******************************************************************************
  * Copyright © 2014-2019 The SuperNET Developers.                             *
  *                                                                            *
@@ -17,6 +16,7 @@ use coins::lp_coinfind;
 //  lp_network.rs
 //  marketmaker
 //
+use coins::lp_coinfind;
 use common::executor::spawn;
 use common::mm_ctx::{MmArc, MmWeak};
 use common::mm_error::prelude::*;
