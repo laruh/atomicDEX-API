@@ -1119,15 +1119,12 @@ impl MarketCoinOps for EthCoin {
         )
     }
 
-    fn send_raw_tx_bytes(&self, mut tx: &[u8]) -> Box<dyn Future<Item = String, Error = String> + Send> {
-        if tx.starts_with(b"0x") {
-            tx = &tx[2..];
-        }
-
+    fn send_raw_tx_bytes(&self, tx: &[u8]) -> Box<dyn Future<Item = String, Error = String> + Send> {
+        let bytes = try_fus!(hex::decode(tx));
         Box::new(
             self.web3
                 .eth()
-                .send_raw_transaction(tx.into())
+                .send_raw_transaction(bytes.into())
                 .map(|res| format!("{:02x}", res))
                 .map_err(|e| ERRL!("{}", e)),
         )

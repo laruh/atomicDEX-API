@@ -82,9 +82,18 @@ mod tests {
         assert_eq!(valid_tx_details.my_balance_change, withdraw_amount.neg());
         assert_eq!(valid_tx_details.coin, "USDC".to_string());
         assert_ne!(valid_tx_details.timestamp, 0);
+
         let tx_str = from_utf8(&*valid_tx_details.tx_hex.0).unwrap();
         let res = usdc_sol_coin.send_raw_tx(tx_str).compat().await;
         assert_eq!(res.is_err(), false);
         println!("{:?}", res);
+
+        let res2 = usdc_sol_coin
+            .send_raw_tx_bytes(&valid_tx_details.tx_hex.0)
+            .compat()
+            .await;
+        assert_eq!(res2.is_err(), false);
+
+        assert_eq!(res, res2);
     }
 }
