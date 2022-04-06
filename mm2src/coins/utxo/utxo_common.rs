@@ -1696,7 +1696,10 @@ where
     Box::new(fut.boxed().compat())
 }
 
-pub fn send_raw_tx<T: AsRef<[u8]>>(coin: &UtxoCoinFields, tx: T) -> Box<dyn Future<Item = String, Error = String> + Send> {
+pub fn send_raw_tx<T: AsRef<[u8]>>(
+    coin: &UtxoCoinFields,
+    tx: T,
+) -> Box<dyn Future<Item = String, Error = String> + Send> {
     let bytes = try_fus!(hex::decode(tx));
     Box::new(
         coin.rpc_client

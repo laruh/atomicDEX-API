@@ -89,11 +89,10 @@ mod tests {
         println!("{:?}", res);
 
         let res2 = usdc_sol_coin
-            .send_raw_tx_bytes(&valid_tx_details.tx_hex.0)
+            .send_raw_tx_bytes(&*valid_tx_details.tx_hex.0)
             .compat()
             .await;
         assert_eq!(res2.is_err(), false);
-
         assert_eq!(res, res2);
     }
 }
