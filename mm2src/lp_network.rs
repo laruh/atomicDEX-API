@@ -18,10 +18,10 @@ use coins::lp_coinfind;
 //  marketmaker
 //
 use common::executor::spawn;
-use common::{log, Future01CompatExt};
 use common::mm_ctx::{MmArc, MmWeak};
 use common::mm_error::prelude::*;
 use common::mm_metrics::{ClockOps, MetricsOps};
+use common::{log, Future01CompatExt};
 use derive_more::Display;
 use futures::{channel::oneshot, StreamExt};
 use mm2_libp2p::atomicdex_behaviour::{AdexBehaviourCmd, AdexBehaviourEvent, AdexCmdTx, AdexEventRx, AdexResponse,

@@ -11,7 +11,7 @@ use super::{broadcast_my_swap_status, broadcast_swap_message_every, check_other_
 use crate::mm2::lp_dispatcher::{DispatcherContext, LpEvents};
 use crate::mm2::lp_network::subscribe_to_topic;
 use crate::mm2::lp_ordermatch::{MakerOrderBuilder, OrderConfirmationsSettings};
-use crate::mm2::lp_swap::{tx_helper_topic, broadcast_transaction_message};
+use crate::mm2::lp_swap::{broadcast_transaction_message, tx_helper_topic};
 use crate::mm2::MM_VERSION;
 use bigdecimal::BigDecimal;
 use bitcrypto::dhash160;
