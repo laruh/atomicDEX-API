@@ -2016,7 +2016,7 @@ mod slp_tests {
 
         let err = fusd.send_raw_tx(&tx_bytes_str).wait().unwrap_err();
         println!("{:?}", err);
-        assert!(err.contains("is not valid with reason outputs greater than inputs"));
+        assert!(err.contains("the transaction was rejected by network rules.\\n\\ntransaction already in block chain"));
 
         let utxo_tx: UtxoTx = deserialize(tx_bytes).unwrap();
         let err = block_on(fusd.broadcast_tx(&utxo_tx)).unwrap_err();
