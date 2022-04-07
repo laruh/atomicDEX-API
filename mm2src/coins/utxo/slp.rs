@@ -1081,7 +1081,6 @@ impl MarketCoinOps for SlpToken {
 
     fn platform_ticker(&self) -> &str { self.platform_coin.ticker() }
 
-    #[inline(always)]
     /// Receives raw transaction bytes in hexadecimal format as input and returns tx hash in hexadecimal format
     fn send_raw_tx(&self, tx: &str) -> Box<dyn Future<Item = String, Error = String> + Send> {
         let _self = self.clone();
