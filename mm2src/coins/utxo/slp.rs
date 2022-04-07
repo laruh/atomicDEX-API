@@ -1084,12 +1084,32 @@ impl MarketCoinOps for SlpToken {
     #[inline(always)]
     /// Receives raw transaction bytes in hexadecimal format as input and returns tx hash in hexadecimal format
     fn send_raw_tx(&self, tx: &str) -> Box<dyn Future<Item = String, Error = String> + Send> {
-        utxo_common::send_raw_tx(self.as_ref(), tx)
+        let _self = self.clone();
+        let tx = tx.to_owned();
+        let fut = async move {
+            let bytes = hex::decode(tx).map_to_mm(|e| e).map_err(|e| format!("{:?}", e))?;
+            let tx = deserialize(bytes.as_slice())
+                .map_to_mm(|e| e)
+                .map_err(|e| format!("{:?}", e))?;
+            let hash = _self.broadcast_tx(&tx).await.map_err(|e| format!("{:?}", e))?;
+            Ok(format!("{:?}", hash))
+        };
+
+        Box::new(fut.boxed().compat())
     }
 
-    #[inline(always)]
     fn send_raw_tx_bytes(&self, tx: &[u8]) -> Box<dyn Future<Item = String, Error = String> + Send> {
-        utxo_common::send_raw_tx(self.as_ref(), tx)
+        let _self = self.clone();
+        let bytes = tx.to_owned();
+        let fut = async move {
+            let tx = deserialize(bytes.as_slice())
+                .map_to_mm(|e| e)
+                .map_err(|e| format!("{:?}", e))?;
+            let hash = _self.broadcast_tx(&tx).await.map_err(|e| format!("{:?}", e))?;
+            Ok(format!("{:?}", hash))
+        };
+
+        Box::new(fut.boxed().compat())
     }
 
     fn wait_for_confirmations(
@@ -2014,11 +2034,16 @@ mod slp_tests {
             142, 135, 205, 228, 173, 0, 0, 0, 0, 0, 25, 118, 169, 20, 140, 255, 252, 36, 9, 208, 99, 67, 125, 106, 168,
             183, 90, 0, 155, 155, 165, 27, 113, 252, 136, 172, 216, 36, 92, 97,
         ];
-        let tx_bytes_str = hex::encode(tx_bytes);
 
+        let tx_bytes_str = hex::encode(tx_bytes);
         let err = fusd.send_raw_tx(&tx_bytes_str).wait().unwrap_err();
         println!("{:?}", err);
-        assert!(err.contains("the transaction was rejected by network rules.\\n\\ntransaction already in block chain"));
+        assert!(err.contains("is not valid with reason outputs greater than inputs"));
+
+        let err2 = fusd.send_raw_tx_bytes(tx_bytes).wait().unwrap_err();
+        println!("{:?}", err2);
+        assert!(err2.contains("is not valid with reason outputs greater than inputs"));
+        assert_eq!(err, err2);
 
         let utxo_tx: UtxoTx = deserialize(tx_bytes).unwrap();
         let err = block_on(fusd.broadcast_tx(&utxo_tx)).unwrap_err();
