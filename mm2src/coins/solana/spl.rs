@@ -218,10 +218,12 @@ impl MarketCoinOps for SplToken {
 
     fn platform_ticker(&self) -> &str { self.platform_coin.ticker() }
 
+    #[inline(always)]
     fn send_raw_tx(&self, tx: &str) -> Box<dyn Future<Item = String, Error = String> + Send> {
         self.platform_coin.send_raw_tx(tx)
     }
 
+    #[inline(always)]
     fn send_raw_tx_bytes(&self, tx: &[u8]) -> Box<dyn Future<Item = String, Error = String> + Send> {
         self.platform_coin.send_raw_tx_bytes(tx)
     }

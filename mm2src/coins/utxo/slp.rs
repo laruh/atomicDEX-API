@@ -1081,11 +1081,13 @@ impl MarketCoinOps for SlpToken {
 
     fn platform_ticker(&self) -> &str { self.platform_coin.ticker() }
 
+    #[inline(always)]
     /// Receives raw transaction bytes in hexadecimal format as input and returns tx hash in hexadecimal format
     fn send_raw_tx(&self, tx: &str) -> Box<dyn Future<Item = String, Error = String> + Send> {
         utxo_common::send_raw_tx(self.as_ref(), tx)
     }
 
+    #[inline(always)]
     fn send_raw_tx_bytes(&self, tx: &[u8]) -> Box<dyn Future<Item = String, Error = String> + Send> {
         utxo_common::send_raw_tx(self.as_ref(), tx)
     }
