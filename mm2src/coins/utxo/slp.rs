@@ -1083,14 +1083,12 @@ impl MarketCoinOps for SlpToken {
 
     /// Receives raw transaction bytes in hexadecimal format as input and returns tx hash in hexadecimal format
     fn send_raw_tx(&self, tx: &str) -> Box<dyn Future<Item = String, Error = String> + Send> {
-        let _self = self.clone();
+        let selfi = self.clone();
         let tx = tx.to_owned();
         let fut = async move {
             let bytes = hex::decode(tx).map_to_mm(|e| e).map_err(|e| format!("{:?}", e))?;
-            let tx = deserialize(bytes.as_slice())
-                .map_to_mm(|e| e)
-                .map_err(|e| format!("{:?}", e))?;
-            let hash = _self.broadcast_tx(&tx).await.map_err(|e| format!("{:?}", e))?;
+            let tx = try_s!(deserialize(bytes.as_slice()));
+            let hash = selfi.broadcast_tx(&tx).await.map_err(|e| format!("{:?}", e))?;
             Ok(format!("{:?}", hash))
         };
 
@@ -1098,13 +1096,11 @@ impl MarketCoinOps for SlpToken {
     }
 
     fn send_raw_tx_bytes(&self, tx: &[u8]) -> Box<dyn Future<Item = String, Error = String> + Send> {
-        let _self = self.clone();
+        let selfi = self.clone();
         let bytes = tx.to_owned();
         let fut = async move {
-            let tx = deserialize(bytes.as_slice())
-                .map_to_mm(|e| e)
-                .map_err(|e| format!("{:?}", e))?;
-            let hash = _self.broadcast_tx(&tx).await.map_err(|e| format!("{:?}", e))?;
+            let tx = try_s!(deserialize(bytes.as_slice()));
+            let hash = selfi.broadcast_tx(&tx).await.map_err(|e| format!("{:?}", e))?;
             Ok(format!("{:?}", hash))
         };
 

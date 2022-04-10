@@ -84,15 +84,14 @@ mod tests {
         assert_ne!(valid_tx_details.timestamp, 0);
 
         let tx_str = from_utf8(&*valid_tx_details.tx_hex.0).unwrap();
-        let res = usdc_sol_coin.send_raw_tx(tx_str).compat().await;
-        assert_eq!(res.is_err(), false);
+        let res = usdc_sol_coin.send_raw_tx(tx_str).compat().await.unwrap();
         println!("{:?}", res);
 
         let res2 = usdc_sol_coin
             .send_raw_tx_bytes(&*valid_tx_details.tx_hex.0)
             .compat()
-            .await;
-        assert_eq!(res2.is_err(), false);
+            .await
+            .unwrap();
         assert_eq!(res, res2);
     }
 }
