@@ -142,7 +142,7 @@ async fn process_p2p_message(
                 if let Some(pair) = split.next() {
                     if let Ok(Some(coin)) = lp_coinfind(&ctx, pair).await {
                         match coin.send_raw_tx_bytes(&message.data).compat().await {
-                            Ok(id) => log::info!("Transaction broadcasted successfully: {:?} ", id),
+                            Ok(id) => log::debug!("Transaction broadcasted successfully: {:?} ", id),
                             Err(e) => log::error!("Broadcast transaction failed. {}", e),
                         }
                     }
