@@ -110,7 +110,7 @@ mod docker_tests {
     use coins::utxo::slp::{slp_genesis_output, SlpOutput};
     use coins::utxo::utxo_common::send_outputs_from_my_address;
     use coins::utxo::utxo_standard::{utxo_standard_coin_with_priv_key, UtxoStandardCoin};
-    use coins::utxo::{dhash160, UtxoActivationParams, UtxoCommonOps};
+    use coins::utxo::{dhash160, ListUtxoOps, UtxoActivationParams, UtxoCommonOps};
     use coins::{CoinProtocol, FoundSwapTxSpend, MarketCoinOps, MmCoin, SwapOps, Transaction, TransactionEnum,
                 WithdrawRequest};
     use common::for_tests::{check_my_swap_status_amounts, enable_electrum};
@@ -3232,7 +3232,7 @@ mod docker_tests {
 
         thread::sleep(Duration::from_secs(2));
         let (unspents, _) =
-            block_on(coin.list_unspent_ordered(&coin.as_ref().derivation_method.unwrap_iguana())).unwrap();
+            block_on(coin.get_unspent_ordered_list(&coin.as_ref().derivation_method.unwrap_iguana())).unwrap();
         assert_eq!(unspents.len(), 1);
     }
 
@@ -3290,7 +3290,7 @@ mod docker_tests {
 
         thread::sleep(Duration::from_secs(2));
         let (unspents, _) =
-            block_on(coin.list_unspent_ordered(&coin.as_ref().derivation_method.unwrap_iguana())).unwrap();
+            block_on(coin.get_unspent_ordered_list(&coin.as_ref().derivation_method.unwrap_iguana())).unwrap();
         // 4 utxos are merged of 5 so the resulting unspents len must be 2
         assert_eq!(unspents.len(), 2);
     }

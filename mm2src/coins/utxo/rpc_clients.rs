@@ -2,11 +2,12 @@
 #![cfg_attr(target_arch = "wasm32", allow(dead_code))]
 
 use crate::utxo::{output_script, sat_from_big_decimal};
-use crate::{NumConversError, RpcTransportEventHandler, RpcTransportEventHandlerShared};
+use crate::{big_decimal_from_sat_unsigned, NumConversError, RpcTransportEventHandler, RpcTransportEventHandlerShared};
 use async_trait::async_trait;
 use bigdecimal::BigDecimal;
 use chain::{BlockHeader, BlockHeaderBits, BlockHeaderNonce, OutPoint, Transaction as UtxoTx};
 use common::custom_futures::{select_ok_sequential, FutureTimerExt};
+use common::custom_iter::IntoGroupMapResult;
 use common::executor::{spawn, Timer};
 use common::jsonrpc_client::{BatchRequest, JsonRpcBatchResponse, JsonRpcClient, JsonRpcError, JsonRpcErrorType,
                              JsonRpcId, JsonRpcMultiClient, JsonRpcRemoteAddr, JsonRpcRequest, JsonRpcRequestEnum,
@@ -25,7 +26,6 @@ use futures01::future::select_ok;
 use futures01::sync::{mpsc, oneshot};
 use futures01::{Future, Sink, Stream};
 use http::Uri;
-use itertools::Itertools;
 use keys::hash::H256;
 use keys::{Address, Type as ScriptType};
 #[cfg(test)] use mocktopus::macros::*;
@@ -34,7 +34,8 @@ use serde_json::{self as json, Value as Json};
 use serialization::{deserialize, serialize, serialize_with_flags, CoinVariant, CompactInteger, Reader,
                     SERIALIZE_TRANSACTION_WITNESS};
 use sha2::{Digest, Sha256};
-use std::collections::hash_map::{Entry, HashMap};
+use std::collections::hash_map::Entry;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::io;
 use std::net::{SocketAddr, ToSocketAddrs};
@@ -61,6 +62,10 @@ cfg_native! {
 pub type AddressesByLabelResult = HashMap<String, AddressPurpose>;
 pub type JsonRpcPendingRequestsShared = Arc<AsyncMutex<JsonRpcPendingRequests>>;
 pub type JsonRpcPendingRequests = HashMap<JsonRpcId, async_oneshot::Sender<JsonRpcResponseEnum>>;
+pub type UnspentMap = HashMap<Address, Vec<UnspentInfo>>;
+
+type ElectrumScriptHash = String;
+type ScriptHashUnspents = Vec<ElectrumUnspent>;
 
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
@@ -259,6 +264,8 @@ impl From<NumConversError> for UtxoRpcError {
 pub trait UtxoRpcClientOps: fmt::Debug + Send + Sync + 'static {
     fn list_unspent(&self, address: &Address, decimals: u8) -> UtxoRpcFut<Vec<UnspentInfo>>;
 
+    fn list_unspent_group(&self, addresses: Vec<Address>, decimals: u8) -> UtxoRpcFut<UnspentMap>;
+
     fn send_transaction(&self, tx: &UtxoTx) -> UtxoRpcFut<H256Json>;
 
     fn send_raw_transaction(&self, tx: BytesJson) -> UtxoRpcFut<H256Json>;
@@ -267,11 +274,13 @@ pub trait UtxoRpcClientOps: fmt::Debug + Send + Sync + 'static {
 
     fn get_verbose_transaction(&self, txid: &H256Json) -> UtxoRpcFut<RpcTransaction>;
 
+    fn get_verbose_transactions(&self, tx_ids: &[H256Json]) -> UtxoRpcFut<Vec<RpcTransaction>>;
+
     fn get_block_count(&self) -> UtxoRpcFut<u64>;
 
     fn display_balance(&self, address: Address, decimals: u8) -> RpcRes<BigDecimal>;
 
-    fn display_balances(&self, addresses: Vec<Address>, decimals: u8) -> RpcRes<Vec<(Address, BigDecimal)>>;
+    fn display_balances(&self, addresses: Vec<Address>, decimals: u8) -> UtxoRpcFut<Vec<(Address, BigDecimal)>>;
 
     /// returns fee estimation per KByte in satoshis
     fn estimate_fee_sat(
@@ -639,6 +648,45 @@ impl UtxoRpcClientOps for NativeClient {
         Box::new(fut)
     }
 
+    fn list_unspent_group(&self, addresses: Vec<Address>, decimals: u8) -> UtxoRpcFut<UnspentMap> {
+        let mut addresses_str = Vec::with_capacity(addresses.len());
+        let mut addresses_map = HashMap::with_capacity(addresses.len());
+        for addr in addresses {
+            let addr_str = addr.to_string();
+            addresses_str.push(addr_str.clone());
+            addresses_map.insert(addr_str, addr);
+        }
+
+        let fut = self
+            .list_unspent_impl(0, std::i32::MAX, addresses_str)
+            .map_to_mm_fut(UtxoRpcError::from)
+            .and_then(move |unspents| {
+                unspents
+                    .into_iter()
+                    // Convert `Vec<NativeUnspent>` into `UnspentMap`.
+                    .map(|unspent| {
+                        let orig_address = addresses_map
+                            .get(&unspent.address)
+                            .or_mm_err(|| {
+                                UtxoRpcError::InvalidResponse(format!("Unexpected address '{}'", unspent.address))
+                            })?
+                            .clone();
+                        let unspent_info = UnspentInfo {
+                            outpoint: OutPoint {
+                                hash: unspent.txid.reversed().into(),
+                                index: unspent.vout,
+                            },
+                            value: sat_from_big_decimal(&unspent.amount.to_decimal(), decimals)?,
+                            height: None,
+                        };
+                        Ok((orig_address, unspent_info))
+                    })
+                    // Collect `(Address, UnspentInfo)` items into `HashMap<Address, Vec<UnspentInfo>>` grouped by the addresses.
+                    .into_group_map_result()
+            });
+        Box::new(fut)
+    }
+
     fn send_transaction(&self, tx: &UtxoTx) -> UtxoRpcFut<H256Json> {
         let tx_bytes = if tx.has_witness() {
             BytesJson::from(serialize_with_flags(tx, SERIALIZE_TRANSACTION_WITNESS))
@@ -661,6 +709,13 @@ impl UtxoRpcClientOps for NativeClient {
         Box::new(self.get_raw_transaction_verbose(txid).map_to_mm_fut(UtxoRpcError::from))
     }
 
+    fn get_verbose_transactions(&self, tx_ids: &[H256Json]) -> UtxoRpcFut<Vec<RpcTransaction>> {
+        Box::new(
+            self.get_raw_transaction_verbose_batch(tx_ids)
+                .map_to_mm_fut(UtxoRpcError::from),
+        )
+    }
+
     fn get_block_count(&self) -> UtxoRpcFut<u64> {
         Box::new(self.0.get_block_count().map_to_mm_fut(UtxoRpcError::from))
     }
@@ -676,28 +731,22 @@ impl UtxoRpcClientOps for NativeClient {
         )
     }
 
-    fn display_balances(&self, addresses: Vec<Address>, _decimals: u8) -> RpcRes<Vec<(Address, BigDecimal)>> {
-        let addresses_str: Vec<_> = addresses.iter().map(ToString::to_string).collect();
+    fn display_balances(&self, addresses: Vec<Address>, decimals: u8) -> UtxoRpcFut<Vec<(Address, BigDecimal)>> {
         Box::new(
-            self.list_unspent_impl(0, i32::MAX, addresses_str.clone())
-                .map(move |unspents| {
-                    // First, calculate the balance of each address returned from `NativeClient::list_unspent_impl`.
-                    let balances: HashMap<String, BigDecimal> = unspents
-                        .into_iter()
-                        // Group `NativeUnspent` by the addresses.
-                        .into_grouping_map_by(|unspent| unspent.address.clone())
-                        // Fold `Vec<NativeUnspent>` related to one particular address to get the total balance of that address.
-                        .fold(BigDecimal::from(0), |sum, _key, unspent| {
-                            sum + unspent.amount.to_decimal()
-                        });
-                    // Secondly, iterate over the requested `addresses` and try to find corresponding balance.
+            self.list_unspent_group(addresses.clone(), decimals)
+                .map(move |mut unspent_map| {
                     addresses
                         .into_iter()
-                        .zip(addresses_str)
-                        .map(|(address, address_str)| {
+                        .map(|address| {
                             // If `balances` doesn't contain `address`, there are no unspents related to the address.
                             // Consider the balance of that address equal to 0.
-                            let balance = balances.get(&address_str).cloned().unwrap_or_default();
+                            let balance = unspent_map
+                                .remove(&address)
+                                .unwrap_or_default()
+                                .into_iter()
+                                .fold(BigDecimal::from(0), |sum, unspent| {
+                                    sum + big_decimal_from_sat_unsigned(unspent.value, decimals)
+                                });
                             (address, balance)
                         })
                         .collect()
@@ -902,6 +951,18 @@ impl NativeClientImpl {
     fn get_raw_transaction_verbose(&self, txid: &H256Json) -> RpcRes<RpcTransaction> {
         let verbose = 1;
         rpc_func!(self, "getrawtransaction", txid, verbose)
+    }
+
+    /// https://developer.bitcoin.org/reference/rpc/getrawtransaction.html
+    /// Always returns verbose transactions in a batch.
+    fn get_raw_transaction_verbose_batch(&self, tx_ids: &[H256Json]) -> RpcRes<Vec<RpcTransaction>> {
+        let verbose = 1;
+        Box::new(
+            tx_ids
+                .iter()
+                .map(|txid| rpc_req!(self, "getrawtransaction", txid, verbose))
+                .batch_rpc(self),
+        )
     }
 
     /// https://developer.bitcoin.org/reference/rpc/getrawtransaction.html
@@ -1647,6 +1708,33 @@ impl ElectrumClient {
         Box::new(fut.boxed().compat())
     }
 
+    /// https://electrumx.readthedocs.io/en/latest/protocol-methods.html#blockchain-scripthash-listunspent
+    /// It can return duplicates sometimes: https://github.com/artemii235/SuperNET/issues/269
+    /// We should remove them to build valid transactions.
+    /// Please note the function returns `ScriptHashUnspents` elements in the same order in which they were requested.
+    pub fn scripthash_list_unspent_batch(&self, hashes: Vec<ElectrumScriptHash>) -> RpcRes<Vec<ScriptHashUnspents>> {
+        Box::new(
+            hashes
+                .iter()
+                .map(|hash| rpc_req!(self, "blockchain.scripthash.listunspent", hash))
+                .batch_rpc(self)
+                .map(move |unspents: Vec<ScriptHashUnspents>| {
+                    unspents
+                        .into_iter()
+                        .map(|hash_unspents| {
+                            let mut set = HashSet::with_capacity(hash_unspents.len());
+                            let hash_unspents: Vec<_> = hash_unspents
+                                .into_iter()
+                                // Don't use `Itertools::unique_by` because it seems to be inefficient.
+                                .filter(|unspent| set.insert((unspent.tx_hash, unspent.tx_pos)))
+                                .collect();
+                            hash_unspents
+                        })
+                        .collect()
+                }),
+        )
+    }
+
     /// https://electrumx.readthedocs.io/en/latest/protocol-methods.html#blockchain-scripthash-get-history
     pub fn scripthash_get_history(&self, hash: &str) -> RpcRes<Vec<ElectrumTxHistoryItem>> {
         rpc_func!(self, "blockchain.scripthash.get_history", hash)
@@ -1738,6 +1826,44 @@ impl UtxoRpcClientOps for ElectrumClient {
         )
     }
 
+    fn list_unspent_group(&self, addresses: Vec<Address>, _decimals: u8) -> UtxoRpcFut<UnspentMap> {
+        let script_hashes = addresses
+            .iter()
+            .map(|addr| {
+                let script = output_script(addr, ScriptType::P2PKH);
+                let script_hash = electrum_script_hash(&script);
+                hex::encode(script_hash)
+            })
+            .collect();
+        let fut = self
+            .scripthash_list_unspent_batch(script_hashes)
+            .map_to_mm_fut(UtxoRpcError::from)
+            .map(move |unspents| {
+                addresses
+                    .into_iter()
+                    // `scripthash_list_unspent_batch` returns `ScriptHashUnspents` elements in the same order in which they were requested.
+                    // So we can zip `addresses` and `unspents` into one iterator.
+                    .zip(unspents)
+                    // Map `(Address, Vec<ElectrumUnspent>)` pairs into `(Address, Vec<UnspentInfo>)`.
+                    .map(|(address, electrum_unspents)| {
+                        let unspents: Vec<_> = electrum_unspents
+                            .into_iter()
+                            .map(|electrum_unspent| UnspentInfo {
+                                outpoint: OutPoint {
+                                    hash: electrum_unspent.tx_hash.reversed().into(),
+                                    index: electrum_unspent.tx_pos,
+                                },
+                                value: electrum_unspent.value,
+                                height: electrum_unspent.height,
+                            })
+                            .collect();
+                        (address, unspents)
+                    })
+                    .collect()
+            });
+        Box::new(fut)
+    }
+
     fn send_transaction(&self, tx: &UtxoTx) -> UtxoRpcFut<H256Json> {
         let bytes = if tx.has_witness() {
             BytesJson::from(serialize_with_flags(tx, SERIALIZE_TRANSACTION_WITNESS))
@@ -1771,6 +1897,19 @@ impl UtxoRpcClientOps for ElectrumClient {
         Box::new(rpc_func!(self, "blockchain.transaction.get", txid, verbose).map_to_mm_fut(UtxoRpcError::from))
     }
 
+    /// https://electrumx.readthedocs.io/en/latest/protocol-methods.html#blockchain-transaction-get
+    /// Returns verbose transactions in a batch.
+    fn get_verbose_transactions(&self, tx_ids: &[H256Json]) -> UtxoRpcFut<Vec<RpcTransaction>> {
+        let verbose = true;
+        Box::new(
+            tx_ids
+                .iter()
+                .map(|txid| rpc_req!(self, "blockchain.transaction.get", txid, verbose))
+                .batch_rpc(self)
+                .map_to_mm_fut(UtxoRpcError::from),
+        )
+    }
+
     fn get_block_count(&self) -> UtxoRpcFut<u64> {
         Box::new(
             self.blockchain_headers_subscribe()
@@ -1788,22 +1927,27 @@ impl UtxoRpcClientOps for ElectrumClient {
         }))
     }
 
-    fn display_balances(&self, addresses: Vec<Address>, decimals: u8) -> RpcRes<Vec<(Address, BigDecimal)>> {
+    fn display_balances(&self, addresses: Vec<Address>, decimals: u8) -> UtxoRpcFut<Vec<(Address, BigDecimal)>> {
         let hashes = addresses.iter().map(|address| {
             let hash = electrum_script_hash(&output_script(address, ScriptType::P2PKH));
             hex::encode(hash)
         });
-        Box::new(self.scripthash_get_balances(hashes).map(move |results| {
-            results
-                .into_iter()
-                .zip(addresses)
-                .map(|(result, address)| {
-                    let balance_sat = BigInt::from(result.confirmed) + BigInt::from(result.unconfirmed);
-                    let balance_dec = BigDecimal::from(balance_sat) / BigDecimal::from(10u64.pow(decimals as u32));
-                    (address, balance_dec)
+        Box::new(
+            self.scripthash_get_balances(hashes)
+                .map(move |results| {
+                    results
+                        .into_iter()
+                        .zip(addresses)
+                        .map(|(result, address)| {
+                            let balance_sat = BigInt::from(result.confirmed) + BigInt::from(result.unconfirmed);
+                            let balance_dec =
+                                BigDecimal::from(balance_sat) / BigDecimal::from(10u64.pow(decimals as u32));
+                            (address, balance_dec)
+                        })
+                        .collect()
                 })
-                .collect()
-        }))
+                .map_to_mm_fut(UtxoRpcError::from),
+        )
     }
 
     fn estimate_fee_sat(

@@ -1,12 +1,13 @@
-use crate::utxo::rpc_clients::{UnspentInfo, UtxoRpcClientEnum, UtxoRpcClientOps, UtxoRpcError, UtxoRpcFut,
+use crate::utxo::rpc_clients::{UnspentInfo, UnspentMap, UtxoRpcClientEnum, UtxoRpcClientOps, UtxoRpcError, UtxoRpcFut,
                                UtxoRpcResult};
 use crate::utxo::utxo_builder::{UtxoCoinBuilderCommonOps, UtxoCoinWithIguanaPrivKeyBuilder,
                                 UtxoFieldsWithIguanaPrivKeyBuilder};
 use crate::utxo::utxo_common::{big_decimal_from_sat_unsigned, payment_script};
 use crate::utxo::{sat_from_big_decimal, utxo_common, ActualTxFee, AdditionalTxData, Address, BroadcastTxErr,
-                  FeePolicy, HistoryUtxoTx, HistoryUtxoTxMap, RecentlySpentOutPoints, UtxoActivationParams,
-                  UtxoAddressFormat, UtxoArc, UtxoCoinFields, UtxoCommonOps, UtxoFeeDetails, UtxoTxBroadcastOps,
-                  UtxoTxGenerationOps, UtxoWeak, VerboseTransactionFrom};
+                  FeePolicy, HistoryUtxoTx, HistoryUtxoTxMap, ListUtxoOps, MatureUnspentList, MatureUnspentMap,
+                  RecentlySpentOutPoints, RecentlySpentOutPointsGuard, UtxoActivationParams, UtxoAddressFormat,
+                  UtxoArc, UtxoCoinFields, UtxoCommonOps, UtxoFeeDetails, UtxoTxBroadcastOps, UtxoTxGenerationOps,
+                  UtxoWeak, VerboseTransactionFrom};
 use crate::{BalanceFut, CoinBalance, FeeApproxStage, FoundSwapTxSpend, HistorySyncState, MarketCoinOps, MmCoin,
             NegotiateSwapContractAddrErr, NumConversError, SwapOps, TradeFee, TradePreimageFut, TradePreimageResult,
             TradePreimageValue, TransactionDetails, TransactionEnum, TransactionFut, TxFeeDetails,
@@ -35,7 +36,7 @@ use rusqlite::{Connection, Error as SqliteError, Row, ToSql, NO_PARAMS};
 use script::{Builder as ScriptBuilder, Opcode, Script, TransactionInputSigner};
 use serde_json::Value as Json;
 use serialization::{deserialize, serialize_list, CoinVariant, Reader};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
@@ -1312,6 +1313,38 @@ impl UtxoTxBroadcastOps for ZCoin {
 }
 
 #[async_trait]
+#[cfg_attr(test, mockable)]
+impl ListUtxoOps for ZCoin {
+    async fn get_unspent_ordered_list(
+        &self,
+        address: &Address,
+    ) -> UtxoRpcResult<(Vec<UnspentInfo>, RecentlySpentOutPointsGuard<'_>)> {
+        utxo_common::get_unspent_ordered_list(self, address).await
+    }
+
+    async fn get_unspent_ordered_map(
+        &self,
+        addresses: Vec<Address>,
+    ) -> UtxoRpcResult<(UnspentMap, RecentlySpentOutPointsGuard<'_>)> {
+        utxo_common::get_unspent_ordered_map(self, addresses).await
+    }
+
+    async fn get_all_unspent_ordered_map<'a>(
+        &'a self,
+        addresses: Vec<Address>,
+    ) -> UtxoRpcResult<(UnspentMap, RecentlySpentOutPointsGuard)> {
+        utxo_common::get_all_unspent_ordered_map(self, addresses).await
+    }
+
+    async fn get_mature_unspent_ordered_map(
+        &self,
+        addresses: Vec<Address>,
+    ) -> UtxoRpcResult<(MatureUnspentMap, RecentlySpentOutPointsGuard<'_>)> {
+        utxo_common::get_mature_unspent_ordered_map(self, addresses).await
+    }
+}
+
+#[async_trait]
 impl UtxoCommonOps for ZCoin {
     async fn get_htlc_spend_fee(&self, tx_size: u64) -> UtxoRpcResult<u64> {
         utxo_common::get_htlc_spend_fee(self, tx_size).await
@@ -1381,35 +1414,13 @@ impl UtxoCommonOps for ZCoin {
         .await
     }
 
-    async fn list_all_unspent_ordered<'a>(
-        &'a self,
-        address: &Address,
-    ) -> UtxoRpcResult<(Vec<UnspentInfo>, AsyncMutexGuard<'a, RecentlySpentOutPoints>)> {
-        utxo_common::list_all_unspent_ordered(self, address).await
-    }
-
-    async fn list_mature_unspent_ordered<'a>(
-        &'a self,
-        address: &Address,
-    ) -> UtxoRpcResult<(Vec<UnspentInfo>, AsyncMutexGuard<'a, RecentlySpentOutPoints>)> {
-        utxo_common::list_mature_unspent_ordered(self, address).await
-    }
-
-    fn get_verbose_transaction_from_cache_or_rpc(&self, txid: H256Json) -> UtxoRpcFut<VerboseTransactionFrom> {
+    fn get_verbose_transactions_from_cache_or_rpc(
+        &self,
+        tx_ids: HashSet<H256Json>,
+    ) -> UtxoRpcFut<HashMap<H256Json, VerboseTransactionFrom>> {
         let selfi = self.clone();
-        let fut = async move { utxo_common::get_verbose_transaction_from_cache_or_rpc(&selfi.utxo_arc, txid).await };
+        let fut = async move { utxo_common::get_verbose_transactions_from_cache_or_rpc(&selfi.utxo_arc, tx_ids).await };
         Box::new(fut.boxed().compat())
-    }
-
-    async fn cache_transaction_if_possible(&self, tx: &RpcTransaction) -> Result<(), String> {
-        utxo_common::cache_transaction_if_possible(&self.utxo_arc, tx).await
-    }
-
-    async fn list_unspent_ordered<'a>(
-        &'a self,
-        address: &Address,
-    ) -> UtxoRpcResult<(Vec<UnspentInfo>, AsyncMutexGuard<'a, RecentlySpentOutPoints>)> {
-        utxo_common::list_unspent_ordered(self, address).await
     }
 
     async fn preimage_trade_fee_required_to_send_outputs(

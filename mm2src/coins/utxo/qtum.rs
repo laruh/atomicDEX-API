@@ -317,6 +317,38 @@ impl UtxoTxGenerationOps for QtumCoin {
 
 #[async_trait]
 #[cfg_attr(test, mockable)]
+impl ListUtxoOps for QtumCoin {
+    async fn get_unspent_ordered_list(
+        &self,
+        address: &Address,
+    ) -> UtxoRpcResult<(Vec<UnspentInfo>, RecentlySpentOutPointsGuard<'_>)> {
+        utxo_common::get_unspent_ordered_list(self, address).await
+    }
+
+    async fn get_unspent_ordered_map(
+        &self,
+        addresses: Vec<Address>,
+    ) -> UtxoRpcResult<(UnspentMap, RecentlySpentOutPointsGuard<'_>)> {
+        utxo_common::get_unspent_ordered_map(self, addresses).await
+    }
+
+    async fn get_all_unspent_ordered_map<'a>(
+        &'a self,
+        addresses: Vec<Address>,
+    ) -> UtxoRpcResult<(UnspentMap, RecentlySpentOutPointsGuard)> {
+        utxo_common::get_all_unspent_ordered_map(self, addresses).await
+    }
+
+    async fn get_mature_unspent_ordered_map(
+        &self,
+        addresses: Vec<Address>,
+    ) -> UtxoRpcResult<(MatureUnspentMap, RecentlySpentOutPointsGuard<'_>)> {
+        utxo_common::get_mature_unspent_ordered_map(self, addresses).await
+    }
+}
+
+#[async_trait]
+#[cfg_attr(test, mockable)]
 impl UtxoCommonOps for QtumCoin {
     async fn get_htlc_spend_fee(&self, tx_size: u64) -> UtxoRpcResult<u64> {
         utxo_common::get_htlc_spend_fee(self, tx_size).await
@@ -384,35 +416,13 @@ impl UtxoCommonOps for QtumCoin {
         .await
     }
 
-    async fn list_all_unspent_ordered<'a>(
-        &'a self,
-        address: &Address,
-    ) -> UtxoRpcResult<(Vec<UnspentInfo>, AsyncMutexGuard<'a, RecentlySpentOutPoints>)> {
-        utxo_common::list_all_unspent_ordered(self, address).await
-    }
-
-    async fn list_mature_unspent_ordered<'a>(
-        &'a self,
-        address: &Address,
-    ) -> UtxoRpcResult<(Vec<UnspentInfo>, AsyncMutexGuard<'a, RecentlySpentOutPoints>)> {
-        utxo_common::list_mature_unspent_ordered(self, address).await
-    }
-
-    fn get_verbose_transaction_from_cache_or_rpc(&self, txid: H256Json) -> UtxoRpcFut<VerboseTransactionFrom> {
+    fn get_verbose_transactions_from_cache_or_rpc(
+        &self,
+        tx_ids: HashSet<H256Json>,
+    ) -> UtxoRpcFut<HashMap<H256Json, VerboseTransactionFrom>> {
         let selfi = self.clone();
-        let fut = async move { utxo_common::get_verbose_transaction_from_cache_or_rpc(&selfi.utxo_arc, txid).await };
+        let fut = async move { utxo_common::get_verbose_transactions_from_cache_or_rpc(&selfi.utxo_arc, tx_ids).await };
         Box::new(fut.boxed().compat())
-    }
-
-    async fn cache_transaction_if_possible(&self, tx: &RpcTransaction) -> Result<(), String> {
-        utxo_common::cache_transaction_if_possible(&self.utxo_arc, tx).await
-    }
-
-    async fn list_unspent_ordered<'a>(
-        &'a self,
-        address: &Address,
-    ) -> UtxoRpcResult<(Vec<UnspentInfo>, AsyncMutexGuard<'a, RecentlySpentOutPoints>)> {
-        utxo_common::list_unspent_ordered(self, address).await
     }
 
     async fn preimage_trade_fee_required_to_send_outputs(
@@ -942,6 +952,13 @@ impl HDWalletBalanceOps for QtumCoin {
 
     async fn known_address_balance(&self, address: &Self::Address) -> BalanceResult<CoinBalance> {
         utxo_common::address_balance(self, address).await
+    }
+
+    async fn known_addresses_balances(
+        &self,
+        addresses: Vec<Self::Address>,
+    ) -> BalanceResult<Vec<(Self::Address, CoinBalance)>> {
+        utxo_common::addresses_balances(self, addresses).await
     }
 }
 

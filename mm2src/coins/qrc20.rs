@@ -2,15 +2,15 @@ use crate::eth::{self, u256_to_big_decimal, wei_from_big_decimal, TryToAddress};
 use crate::qrc20::rpc_clients::{LogEntry, Qrc20ElectrumOps, Qrc20NativeOps, Qrc20RpcOps, TopicFilter, TxReceipt,
                                 ViewContractCallType};
 use crate::utxo::qtum::QtumBasedCoin;
-use crate::utxo::rpc_clients::{ElectrumClient, NativeClient, UnspentInfo, UtxoRpcClientEnum, UtxoRpcClientOps,
-                               UtxoRpcError, UtxoRpcFut, UtxoRpcResult};
+use crate::utxo::rpc_clients::{ElectrumClient, NativeClient, UnspentInfo, UnspentMap, UtxoRpcClientEnum,
+                               UtxoRpcClientOps, UtxoRpcError, UtxoRpcFut, UtxoRpcResult};
 use crate::utxo::utxo_builder::{UtxoCoinBuildError, UtxoCoinBuildResult, UtxoCoinBuilderCommonOps,
                                 UtxoCoinWithIguanaPrivKeyBuilder, UtxoFieldsWithIguanaPrivKeyBuilder};
 use crate::utxo::utxo_common::{self, big_decimal_from_sat, check_all_inputs_signed_by_pub, UtxoTxBuilder};
 use crate::utxo::{qtum, ActualTxFee, AdditionalTxData, BroadcastTxErr, FeePolicy, GenerateTxError, HistoryUtxoTx,
-                  HistoryUtxoTxMap, RecentlySpentOutPoints, UtxoActivationParams, UtxoAddressFormat, UtxoCoinFields,
-                  UtxoCommonOps, UtxoFromLegacyReqErr, UtxoTx, UtxoTxBroadcastOps, UtxoTxGenerationOps,
-                  VerboseTransactionFrom, UTXO_LOCK};
+                  HistoryUtxoTxMap, ListUtxoOps, MatureUnspentMap, RecentlySpentOutPointsGuard, UtxoActivationParams,
+                  UtxoAddressFormat, UtxoCoinFields, UtxoCommonOps, UtxoFromLegacyReqErr, UtxoTx, UtxoTxBroadcastOps,
+                  UtxoTxGenerationOps, VerboseTransactionFrom, UTXO_LOCK};
 use crate::{BalanceError, BalanceFut, CoinBalance, FeeApproxStage, FoundSwapTxSpend, HistorySyncState, MarketCoinOps,
             MmCoin, NegotiateSwapContractAddrErr, PrivKeyNotAllowed, SwapOps, TradeFee, TradePreimageError,
             TradePreimageFut, TradePreimageResult, TradePreimageValue, TransactionDetails, TransactionEnum,
@@ -31,7 +31,6 @@ use derive_more::Display;
 use ethabi::{Function, Token};
 use ethereum_types::{H160, U256};
 use futures::compat::Future01CompatExt;
-use futures::lock::MutexGuard as AsyncMutexGuard;
 use futures::{FutureExt, TryFutureExt};
 use futures01::Future;
 use keys::bytes::Bytes as ScriptBytes;
@@ -42,6 +41,7 @@ use script::{Builder as ScriptBuilder, Opcode, Script, TransactionInputSigner};
 use script_pubkey::generate_contract_call_script_pubkey;
 use serde_json::{self as json, Value as Json};
 use serialization::{deserialize, serialize, CoinVariant};
+use std::collections::{HashMap, HashSet};
 use std::ops::{Deref, Neg};
 #[cfg(not(target_arch = "wasm32"))] use std::path::PathBuf;
 use std::str::FromStr;
@@ -466,7 +466,7 @@ impl Qrc20Coin {
         contract_outputs: Vec<ContractCallOutput>,
     ) -> Result<GenerateQrc20TxResult, MmError<Qrc20GenTxError>> {
         let my_address = self.utxo.derivation_method.iguana_or_err()?;
-        let (unspents, _) = self.list_unspent_ordered(my_address).await?;
+        let (unspents, _) = self.get_unspent_ordered_list(my_address).await?;
 
         let mut gas_fee = 0;
         let mut outputs = Vec::with_capacity(contract_outputs.len());
@@ -571,6 +571,38 @@ impl UtxoTxGenerationOps for Qrc20Coin {
 
 #[async_trait]
 #[cfg_attr(test, mockable)]
+impl ListUtxoOps for Qrc20Coin {
+    async fn get_unspent_ordered_list(
+        &self,
+        address: &Address,
+    ) -> UtxoRpcResult<(Vec<UnspentInfo>, RecentlySpentOutPointsGuard<'_>)> {
+        utxo_common::get_unspent_ordered_list(self, address).await
+    }
+
+    async fn get_unspent_ordered_map(
+        &self,
+        addresses: Vec<Address>,
+    ) -> UtxoRpcResult<(UnspentMap, RecentlySpentOutPointsGuard<'_>)> {
+        utxo_common::get_unspent_ordered_map(self, addresses).await
+    }
+
+    async fn get_all_unspent_ordered_map<'a>(
+        &'a self,
+        addresses: Vec<Address>,
+    ) -> UtxoRpcResult<(UnspentMap, RecentlySpentOutPointsGuard)> {
+        utxo_common::get_all_unspent_ordered_map(self, addresses).await
+    }
+
+    async fn get_mature_unspent_ordered_map(
+        &self,
+        addresses: Vec<Address>,
+    ) -> UtxoRpcResult<(MatureUnspentMap, RecentlySpentOutPointsGuard<'_>)> {
+        utxo_common::get_mature_unspent_ordered_map(self, addresses).await
+    }
+}
+
+#[async_trait]
+#[cfg_attr(test, mockable)]
 impl UtxoCommonOps for Qrc20Coin {
     async fn get_htlc_spend_fee(&self, tx_size: u64) -> UtxoRpcResult<u64> {
         utxo_common::get_htlc_spend_fee(self, tx_size).await
@@ -638,35 +670,13 @@ impl UtxoCommonOps for Qrc20Coin {
         .await
     }
 
-    async fn list_all_unspent_ordered<'a>(
-        &'a self,
-        address: &Address,
-    ) -> UtxoRpcResult<(Vec<UnspentInfo>, AsyncMutexGuard<'a, RecentlySpentOutPoints>)> {
-        utxo_common::list_all_unspent_ordered(self, address).await
-    }
-
-    async fn list_mature_unspent_ordered<'a>(
-        &'a self,
-        address: &Address,
-    ) -> UtxoRpcResult<(Vec<UnspentInfo>, AsyncMutexGuard<'a, RecentlySpentOutPoints>)> {
-        utxo_common::list_mature_unspent_ordered(self, address).await
-    }
-
-    fn get_verbose_transaction_from_cache_or_rpc(&self, txid: H256Json) -> UtxoRpcFut<VerboseTransactionFrom> {
+    fn get_verbose_transactions_from_cache_or_rpc(
+        &self,
+        tx_ids: HashSet<H256Json>,
+    ) -> UtxoRpcFut<HashMap<H256Json, VerboseTransactionFrom>> {
         let selfi = self.clone();
-        let fut = async move { utxo_common::get_verbose_transaction_from_cache_or_rpc(&selfi.utxo, txid).await };
+        let fut = async move { utxo_common::get_verbose_transactions_from_cache_or_rpc(&selfi.utxo, tx_ids).await };
         Box::new(fut.boxed().compat())
-    }
-
-    async fn cache_transaction_if_possible(&self, tx: &RpcTransaction) -> Result<(), String> {
-        utxo_common::cache_transaction_if_possible(&self.utxo, tx).await
-    }
-
-    async fn list_unspent_ordered<'a>(
-        &'a self,
-        address: &Address,
-    ) -> UtxoRpcResult<(Vec<UnspentInfo>, AsyncMutexGuard<'a, RecentlySpentOutPoints>)> {
-        utxo_common::list_unspent_ordered(self, address).await
     }
 
     async fn preimage_trade_fee_required_to_send_outputs(

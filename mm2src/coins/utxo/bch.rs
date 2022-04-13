@@ -20,6 +20,8 @@ use serde_json::{self as json, Value as Json};
 use serialization::{deserialize, CoinVariant};
 use std::sync::MutexGuard;
 
+pub type BchUnspentsMap = HashMap<Address, BchUnspents>;
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BchActivationRequest {
     #[serde(default)]
@@ -184,20 +186,43 @@ impl BchCoin {
     pub fn bchd_urls(&self) -> &[String] { &self.bchd_urls }
 
     async fn utxos_into_bch_unspents(&self, utxos: Vec<UnspentInfo>) -> UtxoRpcResult<BchUnspents> {
+        let to_verbose: HashSet<H256Json> = utxos
+            .iter()
+            .filter_map(|unspent| {
+                if unspent.outpoint.index == 0 {
+                    // Zero output is reserved for OP_RETURN of specific protocols
+                    // so if we get it we can safely consider this as standard BCH UTXO.
+                    // There is no need to request verbose transaction for such UTXO.
+                    None
+                } else {
+                    Some(unspent.outpoint.hash.reversed().into())
+                }
+            })
+            .collect();
+        let verbose_txs = self
+            .get_verbose_transactions_from_cache_or_rpc(to_verbose)
+            .compat()
+            .await?;
+
         let mut result = BchUnspents::default();
         for unspent in utxos {
             if unspent.outpoint.index == 0 {
-                // zero output is reserved for OP_RETURN of specific protocols
-                // so if we get it we can safely consider this as standard BCH UTXO
+                // Zero output is reserved for OP_RETURN of specific protocols
+                // so if we get it we can safely consider this as standard BCH UTXO.
                 result.add_standard(unspent);
                 continue;
             }
 
-            let prev_tx_bytes = self
-                .get_verbose_transaction_from_cache_or_rpc(unspent.outpoint.hash.reversed().into())
-                .compat()
-                .await?
-                .into_inner();
+            let prev_tx_hash = unspent.outpoint.hash.reversed().into();
+            let prev_tx_bytes = verbose_txs
+                .get(&prev_tx_hash)
+                .or_mm_err(|| {
+                    UtxoRpcError::Internal(format!(
+                        "'get_verbose_transactions_from_cache_or_rpc' should have returned '{:?}'",
+                        prev_tx_hash
+                    ))
+                })?
+                .to_inner();
             let prev_tx: UtxoTx = match deserialize(prev_tx_bytes.hex.as_slice()) {
                 Ok(b) => b,
                 Err(e) => {
@@ -288,21 +313,36 @@ impl BchCoin {
     pub async fn bch_unspents_for_spend(
         &self,
         address: &Address,
-    ) -> UtxoRpcResult<(BchUnspents, AsyncMutexGuard<'_, RecentlySpentOutPoints>)> {
-        let (all_unspents, recently_spent) = utxo_common::list_unspent_ordered(self, address).await?;
+    ) -> UtxoRpcResult<(BchUnspents, RecentlySpentOutPointsGuard<'_>)> {
+        let (all_unspents, recently_spent) = utxo_common::get_unspent_ordered_list(self, address).await?;
         let result = self.utxos_into_bch_unspents(all_unspents).await?;
 
         Ok((result, recently_spent))
     }
 
+    /// Locks recently spent cache to safely return UTXOs for spending
+    pub async fn bch_unspents_map_for_spend(
+        &self,
+        addresses: Vec<Address>,
+    ) -> UtxoRpcResult<(BchUnspentsMap, RecentlySpentOutPointsGuard<'_>)> {
+        let (all_unspents, recently_spent) = utxo_common::get_unspent_ordered_map(self, addresses).await?;
+        // Get an iterator of futures: `Iterator<Item=Future<Item=(Address, BchUnspents)>>`
+        let fut_it = all_unspents.into_iter().map(|(address, unspents)| {
+            self.utxos_into_bch_unspents(unspents)
+                .map(move |res| -> UtxoRpcResult<_> {
+                    let bch_unspents = res?;
+                    Ok((address, bch_unspents))
+                })
+        });
+        // Poll the `fut_it` futures concurrently.
+        let bch_unspents_map = futures::future::try_join_all(fut_it).await?.into_iter().collect();
+        Ok((bch_unspents_map, recently_spent))
+    }
+
     pub async fn get_token_utxos_for_spend(
         &self,
         token_id: &H256,
-    ) -> UtxoRpcResult<(
-        Vec<SlpUnspent>,
-        Vec<UnspentInfo>,
-        AsyncMutexGuard<'_, RecentlySpentOutPoints>,
-    )> {
+    ) -> UtxoRpcResult<(Vec<SlpUnspent>, Vec<UnspentInfo>, RecentlySpentOutPointsGuard<'_>)> {
         let my_address = self
             .as_ref()
             .derivation_method
@@ -693,6 +733,50 @@ impl UtxoTxGenerationOps for BchCoin {
     }
 }
 
+#[async_trait]
+#[cfg_attr(test, mockable)]
+impl ListUtxoOps for BchCoin {
+    async fn get_unspent_ordered_list(
+        &self,
+        address: &Address,
+    ) -> UtxoRpcResult<(Vec<UnspentInfo>, RecentlySpentOutPointsGuard<'_>)> {
+        let (bch_unspents, recently_spent) = self.bch_unspents_for_spend(address).await?;
+        Ok((bch_unspents.standard, recently_spent))
+    }
+
+    async fn get_unspent_ordered_map(
+        &self,
+        addresses: Vec<Address>,
+    ) -> UtxoRpcResult<(UnspentMap, RecentlySpentOutPointsGuard<'_>)> {
+        let (bch_unspents_map, recently_spent) = self.bch_unspents_map_for_spend(addresses).await?;
+        let unspents = bch_unspents_map
+            .into_iter()
+            .map(|(address, bch_unspents)| (address, bch_unspents.standard))
+            .collect();
+        Ok((unspents, recently_spent))
+    }
+
+    async fn get_all_unspent_ordered_map<'a>(
+        &'a self,
+        addresses: Vec<Address>,
+    ) -> UtxoRpcResult<(UnspentMap, RecentlySpentOutPointsGuard)> {
+        utxo_common::get_all_unspent_ordered_map(self, addresses).await
+    }
+
+    async fn get_mature_unspent_ordered_map(
+        &self,
+        addresses: Vec<Address>,
+    ) -> UtxoRpcResult<(MatureUnspentMap, RecentlySpentOutPointsGuard<'_>)> {
+        let (unspents_map, recently_spent) = utxo_common::get_all_unspent_ordered_map(self, addresses).await?;
+        // Convert `UnspentMap` into `MatureUnspentMap`.
+        let mature_unspents_map = unspents_map
+            .into_iter()
+            .map(|(address, unspents)| (address, MatureUnspentList::new_mature(unspents)))
+            .collect();
+        Ok((mature_unspents_map, recently_spent))
+    }
+}
+
 // if mockable is placed before async_trait there is `munmap_chunk(): invalid pointer` error on async fn mocking attempt
 #[async_trait]
 #[cfg_attr(test, mockable)]
@@ -759,36 +843,13 @@ impl UtxoCommonOps for BchCoin {
         .await
     }
 
-    async fn list_all_unspent_ordered<'a>(
-        &'a self,
-        address: &Address,
-    ) -> UtxoRpcResult<(Vec<UnspentInfo>, AsyncMutexGuard<'a, RecentlySpentOutPoints>)> {
-        utxo_common::list_all_unspent_ordered(self, address).await
-    }
-
-    async fn list_mature_unspent_ordered<'a>(
-        &'a self,
-        address: &Address,
-    ) -> UtxoRpcResult<(Vec<UnspentInfo>, AsyncMutexGuard<'a, RecentlySpentOutPoints>)> {
-        utxo_common::list_all_unspent_ordered(self, address).await
-    }
-
-    fn get_verbose_transaction_from_cache_or_rpc(&self, txid: H256Json) -> UtxoRpcFut<VerboseTransactionFrom> {
+    fn get_verbose_transactions_from_cache_or_rpc(
+        &self,
+        tx_ids: HashSet<H256Json>,
+    ) -> UtxoRpcFut<HashMap<H256Json, VerboseTransactionFrom>> {
         let selfi = self.clone();
-        let fut = async move { utxo_common::get_verbose_transaction_from_cache_or_rpc(&selfi.utxo_arc, txid).await };
+        let fut = async move { utxo_common::get_verbose_transactions_from_cache_or_rpc(&selfi.utxo_arc, tx_ids).await };
         Box::new(fut.boxed().compat())
-    }
-
-    async fn cache_transaction_if_possible(&self, tx: &RpcTransaction) -> Result<(), String> {
-        utxo_common::cache_transaction_if_possible(&self.utxo_arc, tx).await
-    }
-
-    async fn list_unspent_ordered<'a>(
-        &'a self,
-        address: &Address,
-    ) -> UtxoRpcResult<(Vec<UnspentInfo>, AsyncMutexGuard<'a, RecentlySpentOutPoints>)> {
-        let (bch_unspents, recently_spent) = self.bch_unspents_for_spend(address).await?;
-        Ok((bch_unspents.standard, recently_spent))
     }
 
     async fn preimage_trade_fee_required_to_send_outputs(

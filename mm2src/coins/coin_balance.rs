@@ -3,6 +3,7 @@ use crate::hd_wallet::{AddressDerivingError, HDWalletCoinOps, InvalidBip44ChainE
 use crate::{lp_coinfind_or_err, BalanceError, BalanceResult, CoinBalance, CoinFindError, CoinWithDerivationMethod,
             DerivationMethod, HDAddress, MarketCoinOps, MmCoinEnum, UnexpectedDerivationMethod};
 use async_trait::async_trait;
+use common::custom_iter::TryUnzip;
 use common::log::{debug, info};
 use common::mm_ctx::MmArc;
 use common::mm_error::prelude::*;
@@ -299,27 +300,37 @@ pub trait HDWalletBalanceOps: HDWalletCoinOps {
         address_ids: Ids,
     ) -> BalanceResult<Vec<HDAddressBalance>>
     where
-        Self::Address: fmt::Display,
+        Self::Address: fmt::Display + Clone,
         Ids: Iterator<Item = u32> + Send,
     {
-        let (lower, upper) = address_ids.size_hint();
-        let max_addresses = upper.unwrap_or(lower);
+        let (addresses, der_paths) = address_ids
+            .into_iter()
+            .map(|address_id| -> BalanceResult<_> {
+                let HDAddress {
+                    address,
+                    derivation_path,
+                    ..
+                } = self.derive_address(hd_account, chain, address_id)?;
+                Ok((address, derivation_path))
+            })
+            // Try to unzip `Result<(Address, DerivationPath)>` elements into `Result<(Vec<Address>, Vec<DerivationPath>)>`.
+            .try_unzip::<Vec<_>, Vec<_>>()?;
 
-        let mut balances = Vec::with_capacity(max_addresses);
-        for address_id in address_ids {
-            let HDAddress {
-                address,
-                derivation_path,
-                ..
-            } = self.derive_address(hd_account, chain, address_id)?;
-            let balance = self.known_address_balance(&address).await?;
-            balances.push(HDAddressBalance {
+        let balances = self
+            .known_addresses_balances(addresses)
+            .await?
+            .into_iter()
+            // [`HDWalletBalanceOps::known_addresses_balances`] returns pairs `(Address, CoinBalance)`
+            // that are guaranteed to be in the same order in which they were requested.
+            // So we can zip the derivation paths with the pairs `(Address, CoinBalance)`.
+            .zip(der_paths)
+            .map(|((address, balance), derivation_path)| HDAddressBalance {
                 address: address.to_string(),
                 derivation_path: RpcDerivationPath(derivation_path),
                 chain,
                 balance,
-            });
-        }
+            })
+            .collect();
         Ok(balances)
     }
 
@@ -327,6 +338,13 @@ pub trait HDWalletBalanceOps: HDWalletCoinOps {
     /// This function is expected to be more efficient than ['HDWalletBalanceOps::is_address_used'] in most cases
     /// since many of RPC clients allow us to request the address balance without the history.
     async fn known_address_balance(&self, address: &Self::Address) -> BalanceResult<CoinBalance>;
+
+    /// Requests balances of the given `addresses`.
+    /// The pairs `(Address, CoinBalance)` are guaranteed to be in the same order in which they were requested.
+    async fn known_addresses_balances(
+        &self,
+        addresses: Vec<Self::Address>,
+    ) -> BalanceResult<Vec<(Self::Address, CoinBalance)>>;
 
     /// Checks if the address has been used by the user by checking if the transaction history of the given `address` is not empty.
     /// Please note the function can return zero balance even if the address has been used before.
@@ -490,7 +508,7 @@ pub mod common_impl {
     ) -> MmResult<HDAccountBalanceResponse, HDAccountBalanceRpcError>
     where
         Coin: HDWalletBalanceOps + CoinWithDerivationMethod<HDWallet = <Coin as HDWalletCoinOps>::HDWallet> + Sync,
-        <Coin as HDWalletCoinOps>::Address: fmt::Display,
+        <Coin as HDWalletCoinOps>::Address: fmt::Display + Clone,
     {
         let hd_wallet = coin.derivation_method().hd_wallet_or_err()?;
 

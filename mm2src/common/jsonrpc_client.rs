@@ -69,8 +69,12 @@ where
         Rpc: JsonRpcClient,
         T: DeserializeOwned + Send + 'static,
     {
-        let batch = JsonRpcBatchRequest(self.collect());
-        rpc_client.send_batch_request(batch)
+        let requests: Vec<_> = self.collect();
+        if requests.is_empty() {
+            // Return an empty vector of results.
+            return Box::new(futures01::future::ok(Vec::new()));
+        }
+        rpc_client.send_batch_request(JsonRpcBatchRequest(requests))
     }
 }
 
@@ -106,6 +110,10 @@ pub enum JsonRpcRequestEnum {
 }
 
 impl JsonRpcRequestEnum {
+    pub fn new_batch(requests: Vec<JsonRpcRequest>) -> JsonRpcRequestEnum {
+        JsonRpcRequestEnum::Batch(JsonRpcBatchRequest(requests))
+    }
+
     pub fn rpc_id(&self) -> JsonRpcId {
         match self {
             JsonRpcRequestEnum::Single(single) => single.rpc_id(),
