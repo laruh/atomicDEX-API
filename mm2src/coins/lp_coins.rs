@@ -88,7 +88,7 @@ macro_rules! try_fus {
     };
 }
 
-macro_rules! try_fs_fus {
+macro_rules! try_fstx_fus {
     ($e: expr) => {
         match $e {
             Ok(ok) => ok,
@@ -102,7 +102,7 @@ macro_rules! FSTX_ERR {
     ($format: expr) => { Err(FailSafeTxErr::Error(ERRL!($format))) }
 }
 
-macro_rules! try_fs_s {
+macro_rules! try_fstx_s {
     ($e: expr) => {
         match $e {
             Ok(ok) => ok,

@@ -1462,8 +1462,8 @@ async fn send_outputs_from_my_address_impl<T>(coin: T, outputs: Vec<TransactionO
 where
     T: AsRef<UtxoCoinFields> + UtxoCommonOps,
 {
-    let my_address = try_fs_s!(coin.as_ref().derivation_method.iguana_or_err());
-    let (unspents, recently_sent_txs) = try_fs_s!(coin.list_unspent_ordered(my_address).await);
+    let my_address = try_fstx_s!(coin.as_ref().derivation_method.iguana_or_err());
+    let (unspents, recently_sent_txs) = try_fstx_s!(coin.list_unspent_ordered(my_address).await);
     generate_and_send_tx(&coin, unspents, None, FeePolicy::SendExact, recently_sent_txs, outputs).await
 }
 
@@ -1479,8 +1479,8 @@ async fn generate_and_send_tx<T>(
 where
     T: AsRef<UtxoCoinFields> + UtxoTxGenerationOps + UtxoTxBroadcastOps,
 {
-    let my_address = try_fs_s!(coin.as_ref().derivation_method.iguana_or_err());
-    let key_pair = try_fs_s!(coin.as_ref().priv_key_policy.key_pair_or_err());
+    let my_address = try_fstx_s!(coin.as_ref().derivation_method.iguana_or_err());
+    let key_pair = try_fstx_s!(coin.as_ref().priv_key_policy.key_pair_or_err());
 
     let mut builder = UtxoTxBuilder::new(coin)
         .add_available_inputs(unspents)
@@ -1489,7 +1489,7 @@ where
     if let Some(required) = required_inputs {
         builder = builder.add_required_inputs(required);
     }
-    let (unsigned, _) = try_fs_s!(builder.build().await);
+    let (unsigned, _) = try_fstx_s!(builder.build().await);
 
     let spent_unspents = unsigned
         .inputs
@@ -1507,7 +1507,7 @@ where
     };
 
     let prev_script = Builder::build_p2pkh(&my_address.hash);
-    let signed = try_fs_s!(sign_tx(
+    let signed = try_fstx_s!(sign_tx(
         unsigned,
         key_pair,
         prev_script,

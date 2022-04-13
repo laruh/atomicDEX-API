@@ -38,15 +38,15 @@ impl Qrc20Coin {
         receiver_addr: H160,
         swap_contract_address: H160,
     ) -> Result<TransactionEnum, FailSafeTxErr> {
-        let balance = try_fs_s!(self.my_spendable_balance().compat().await);
-        let balance = try_fs_s!(wei_from_big_decimal(&balance, self.utxo.decimals));
+        let balance = try_fstx_s!(self.my_spendable_balance().compat().await);
+        let balance = try_fstx_s!(wei_from_big_decimal(&balance, self.utxo.decimals));
 
         // Check the balance to avoid unnecessary burning of gas
         if balance < value {
             return FSTX_ERR!("Balance {} is less than value {}", balance, value);
         }
 
-        let outputs = try_fs_s!(
+        let outputs = try_fstx_s!(
             self.generate_swap_payment_outputs(
                 balance,
                 id,
@@ -70,15 +70,15 @@ impl Qrc20Coin {
     ) -> Result<TransactionEnum, FailSafeTxErr> {
         let Erc20PaymentDetails {
             swap_id, value, sender, ..
-        } = try_fs_s!(self.erc20_payment_details_from_tx(&payment_tx).await);
+        } = try_fstx_s!(self.erc20_payment_details_from_tx(&payment_tx).await);
 
-        let status = try_fs_s!(self.payment_status(&swap_contract_address, swap_id.clone()).await);
+        let status = try_fstx_s!(self.payment_status(&swap_contract_address, swap_id.clone()).await);
         if status != eth::PAYMENT_STATE_SENT.into() {
             return FSTX_ERR!("Payment state is not PAYMENT_STATE_SENT, got {}", status);
         }
 
         let spend_output =
-            try_fs_s!(self.receiver_spend_output(&swap_contract_address, swap_id, value, secret, sender));
+            try_fstx_s!(self.receiver_spend_output(&swap_contract_address, swap_id, value, secret, sender));
         self.send_contract_calls(vec![spend_output]).await
     }
 
@@ -93,15 +93,15 @@ impl Qrc20Coin {
             receiver,
             secret_hash,
             ..
-        } = try_fs_s!(self.erc20_payment_details_from_tx(&payment_tx).await);
+        } = try_fstx_s!(self.erc20_payment_details_from_tx(&payment_tx).await);
 
-        let status = try_fs_s!(self.payment_status(&swap_contract_address, swap_id.clone()).await);
+        let status = try_fstx_s!(self.payment_status(&swap_contract_address, swap_id.clone()).await);
         if status != eth::PAYMENT_STATE_SENT.into() {
             return FSTX_ERR!("Payment state is not PAYMENT_STATE_SENT, got {}", status);
         }
 
         let refund_output =
-            try_fs_s!(self.sender_refund_output(&swap_contract_address, swap_id, value, secret_hash, receiver));
+            try_fstx_s!(self.sender_refund_output(&swap_contract_address, swap_id, value, secret_hash, receiver));
         self.send_contract_calls(vec![refund_output]).await
     }
 
