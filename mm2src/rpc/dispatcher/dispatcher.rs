@@ -34,6 +34,7 @@ cfg_native! {
     use coins::lightning::{close_channel, connect_to_lightning_node, generate_invoice, get_channel_details,
         get_claimable_balances, get_payment_details, list_channels, list_payments, open_channel,
         send_payment, LightningCoin};
+    use coins::{SolanaCoin, SplToken};
 }
 
 pub async fn process_single_request(
@@ -138,8 +139,6 @@ async fn dispatcher_v2(request: MmRpcRequest, ctx: MmArc) -> DispatcherResult<Re
             handle_mmrpc(ctx, request, init_standalone_coin_user_action::<UtxoStandardCoin>).await
         },
         "init_withdraw" => handle_mmrpc(ctx, request, init_withdraw).await,
-        // "mm_init_status" => handle_mmrpc(ctx, request, mm_init_status).await,
-        // "mm_init_user_action" => handle_mmrpc(ctx, request, mm_init_user_action).await,
         "my_tx_history" => handle_mmrpc(ctx, request, my_tx_history_v2_rpc).await,
         "recreate_swap_data" => handle_mmrpc(ctx, request, recreate_swap_data).await,
         "remove_delegation" => handle_mmrpc(ctx, request, remove_delegation).await,
@@ -167,6 +166,10 @@ async fn dispatcher_v2(request: MmRpcRequest, ctx: MmArc) -> DispatcherResult<Re
             "list_payments" => handle_mmrpc(ctx, request, list_payments).await,
             "open_channel" => handle_mmrpc(ctx, request, open_channel).await,
             "send_payment" => handle_mmrpc(ctx, request, send_payment).await,
+            "enable_solana_with_tokens" => {
+                handle_mmrpc(ctx, request, enable_platform_coin_with_tokens::<SolanaCoin>).await
+            },
+            "enable_spl" => handle_mmrpc(ctx, request, enable_token::<SplToken>).await,
             _ => MmError::err(DispatcherError::NoSuchMethod),
         },
         #[cfg(target_arch = "wasm32")]

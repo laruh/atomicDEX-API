@@ -233,9 +233,9 @@ where
     let content = json::to_vec(t).map_to_mm(FsJsonError::Serializing)?;
 
     let path_tmp = if use_tmp_file {
-        path.to_path_buf()
-    } else {
         PathBuf::from(format!("{}.tmp", path.display()))
+    } else {
+        path.to_path_buf()
     };
 
     let fs_fut = async {

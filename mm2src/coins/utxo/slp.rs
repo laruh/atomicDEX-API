@@ -34,7 +34,7 @@ use hex::FromHexError;
 use keys::hash::H160;
 use keys::{AddressHashEnum, CashAddrType, CashAddress, KeyPair, NetworkPrefix as CashAddrPrefix, Public};
 use primitives::hash::H256;
-use rpc::v1::types::{Bytes as BytesJson, H256 as H256Json};
+use rpc::v1::types::{Bytes as BytesJson, ToTxHash, H256 as H256Json};
 use script::bytes::Bytes;
 use script::{Builder as ScriptBuilder, Opcode, Script, TransactionInputSigner};
 use serde_json::Value as Json;
@@ -292,6 +292,17 @@ pub struct SlpProtocolConf {
     pub required_confirmations: Option<u64>,
 }
 
+#[derive(Debug)]
+pub struct ValidateHtlcInput {
+    tx: Vec<u8>,
+    other_pub: Public,
+    my_pub: Public,
+    time_lock: u32,
+    secret_hash: Vec<u8>,
+    amount: BigDecimal,
+    confirmations: u64,
+}
+
 impl SlpToken {
     pub fn new(
         decimals: u8,
@@ -428,22 +439,14 @@ impl SlpToken {
         .await
     }
 
-    async fn validate_htlc(
-        &self,
-        tx: &[u8],
-        other_pub: &Public,
-        my_pub: &Public,
-        time_lock: u32,
-        secret_hash: &[u8],
-        amount: BigDecimal,
-    ) -> Result<(), MmError<ValidateHtlcError>> {
-        let mut tx: UtxoTx = deserialize(tx).map_to_mm(ValidateHtlcError::TxParseError)?;
+    async fn validate_htlc(&self, input: ValidateHtlcInput) -> Result<(), MmError<ValidateHtlcError>> {
+        let mut tx: UtxoTx = deserialize(input.tx.as_slice()).map_to_mm(ValidateHtlcError::TxParseError)?;
         tx.tx_hash_algo = self.platform_coin.as_ref().tx_hash_algo;
         if tx.outputs.len() < 2 {
             return MmError::err(ValidateHtlcError::TxLackOfOutputs);
         }
 
-        let slp_satoshis = sat_from_big_decimal(&amount, self.decimals())?;
+        let slp_satoshis = sat_from_big_decimal(&input.amount, self.decimals())?;
 
         let slp_unspent = SlpUnspent {
             bch_unspent: UnspentInfo {
@@ -481,11 +484,12 @@ impl SlpToken {
             self.platform_coin.clone(),
             tx,
             SLP_SWAP_VOUT,
-            other_pub,
-            my_pub,
-            secret_hash,
+            &input.other_pub,
+            &input.my_pub,
+            &input.secret_hash,
             self.platform_dust_dec(),
-            time_lock,
+            input.time_lock,
+            input.confirmations,
         );
 
         validate_fut
@@ -744,8 +748,6 @@ impl SlpToken {
     pub fn platform_dust(&self) -> u64 { self.platform_coin.as_ref().dust_amount }
 
     pub fn platform_decimals(&self) -> u8 { self.platform_coin.as_ref().decimals }
-
-    pub fn platform_ticker(&self) -> &str { self.platform_coin.ticker() }
 
     pub fn platform_dust_dec(&self) -> BigDecimal {
         big_decimal_from_sat_unsigned(self.platform_dust(), self.platform_decimals())
@@ -1072,6 +1074,8 @@ impl MarketCoinOps for SlpToken {
         Box::new(self.platform_coin.my_balance().map(|res| res.spendable))
     }
 
+    fn platform_ticker(&self) -> &str { self.platform_coin.ticker() }
+
     /// Receives raw transaction bytes in hexadecimal format as input and returns tx hash in hexadecimal format
     fn send_raw_tx(&self, tx: &str) -> Box<dyn Future<Item = String, Error = String> + Send> {
         let coin = self.clone();
@@ -1337,13 +1341,20 @@ impl SwapOps for SlpToken {
         let secret_hash = input.secret_hash.to_owned();
         let time_lock = input.time_lock;
         let amount = input.amount;
+        let confirmations = input.confirmations;
 
         let coin = self.clone();
+        let input = ValidateHtlcInput {
+            tx,
+            other_pub: maker_pub,
+            my_pub: taker_pub,
+            time_lock,
+            secret_hash,
+            amount,
+            confirmations,
+        };
         let fut = async move {
-            try_s!(
-                coin.validate_htlc(&tx, &maker_pub, &taker_pub, time_lock, &secret_hash, amount)
-                    .await
-            );
+            try_s!(coin.validate_htlc(input).await);
             Ok(())
         };
         Box::new(fut.boxed().compat())
@@ -1352,20 +1363,20 @@ impl SwapOps for SlpToken {
     fn validate_taker_payment(&self, input: ValidatePaymentInput) -> Box<dyn Future<Item = (), Error = String> + Send> {
         let taker_pub = try_fus!(Public::from_slice(&input.taker_pub));
         let maker_pub = try_fus!(Public::from_slice(&input.maker_pub));
+        let confirmations = input.confirmations;
 
         let coin = self.clone();
+        let input = ValidateHtlcInput {
+            tx: input.payment_tx,
+            other_pub: taker_pub,
+            my_pub: maker_pub,
+            time_lock: input.time_lock,
+            secret_hash: input.secret_hash,
+            amount: input.amount,
+            confirmations,
+        };
         let fut = async move {
-            try_s!(
-                coin.validate_htlc(
-                    &input.payment_tx,
-                    &taker_pub,
-                    &maker_pub,
-                    input.time_lock,
-                    &input.secret_hash,
-                    input.amount
-                )
-                .await
-            );
+            try_s!(coin.validate_htlc(input).await);
             Ok(())
         };
         Box::new(fut.boxed().compat())
@@ -1570,7 +1581,7 @@ impl MmCoin for SlpToken {
             let details = TransactionDetails {
                 tx_hex: serialize(&signed).into(),
                 internal_id: tx_hash.clone(),
-                tx_hash,
+                tx_hash: tx_hash.to_tx_hash(),
                 from: vec![my_address_string],
                 to: vec![to_address],
                 total_amount,
@@ -1939,9 +1950,17 @@ mod slp_tests {
 
         let lock_time = 1624547837;
         let secret_hash = hex::decode("5d9e149ad9ccb20e9f931a69b605df2ffde60242").unwrap();
-        let amount = "0.1".parse().unwrap();
-
-        block_on(fusd.validate_htlc(&tx, &other_pub, &my_pub, lock_time, &secret_hash, amount)).unwrap();
+        let amount: BigDecimal = "0.1".parse().unwrap();
+        let input = ValidateHtlcInput {
+            tx,
+            other_pub,
+            my_pub,
+            time_lock: lock_time,
+            secret_hash,
+            amount,
+            confirmations: 1,
+        };
+        block_on(fusd.validate_htlc(input)).unwrap();
     }
 
     #[test]
@@ -2036,12 +2055,21 @@ mod slp_tests {
             &secret_hash,
             fusd.platform_dust_dec(),
             lock_time,
+            1,
         )
         .wait()
         .unwrap();
 
-        let validity_err =
-            block_on(fusd.validate_htlc(&tx, &other_pub, my_pub, lock_time, &secret_hash, amount)).unwrap_err();
+        let input = ValidateHtlcInput {
+            tx,
+            other_pub,
+            my_pub: my_pub.clone(),
+            time_lock: lock_time,
+            secret_hash,
+            amount,
+            confirmations: 1,
+        };
+        let validity_err = block_on(fusd.validate_htlc(input)).unwrap_err();
         match validity_err.into_inner() {
             ValidateHtlcError::InvalidSlpUtxo(e) => println!("{:?}", e),
             err @ _ => panic!("Unexpected err {:?}", err),

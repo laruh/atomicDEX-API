@@ -21,6 +21,7 @@ use ethereum_types::H160;
 use futures::compat::Future01CompatExt;
 use futures::{FutureExt, TryFutureExt};
 use keys::{AddressHashEnum, Signature};
+use rpc::v1::types::ToTxHash;
 use script::Builder as ScriptBuilder;
 use serialization::serialize;
 use std::str::FromStr;
@@ -124,14 +125,13 @@ impl QtumCoin {
         let delegation_output = self.remove_delegation_output(QRC20_GAS_LIMIT_DEFAULT, QRC20_GAS_PRICE_DEFAULT)?;
         let outputs = vec![delegation_output];
         let my_address = self.my_address().map_to_mm(DelegationError::InternalError)?;
-        Ok(self
-            .generate_delegation_transaction(
-                outputs,
-                my_address,
-                QRC20_GAS_LIMIT_DEFAULT,
-                TransactionType::RemoveDelegation,
-            )
-            .await?)
+        self.generate_delegation_transaction(
+            outputs,
+            my_address,
+            QRC20_GAS_LIMIT_DEFAULT,
+            TransactionType::RemoveDelegation,
+        )
+        .await
     }
 
     async fn am_i_currently_staking(&self) -> Result<Option<String>, MmError<StakingInfosError>> {
@@ -252,14 +252,13 @@ impl QtumCoin {
 
         let outputs = vec![delegation_output];
         let my_address = self.my_address().map_to_mm(DelegationError::InternalError)?;
-        Ok(self
-            .generate_delegation_transaction(
-                outputs,
-                my_address,
-                QRC20_GAS_LIMIT_DELEGATION,
-                TransactionType::StakingDelegation,
-            )
-            .await?)
+        self.generate_delegation_transaction(
+            outputs,
+            my_address,
+            QRC20_GAS_LIMIT_DELEGATION,
+            TransactionType::StakingDelegation,
+        )
+        .await
     }
 
     async fn generate_delegation_transaction(
@@ -326,7 +325,7 @@ impl QtumCoin {
 
         Ok(TransactionDetails {
             tx_hex: serialize(&generated_tx.signed).into(),
-            tx_hash: generated_tx.signed.hash().reversed().to_vec().into(),
+            tx_hash: generated_tx.signed.hash().reversed().to_vec().to_tx_hash(),
             from: vec![my_address_string],
             to: vec![to_address],
             total_amount: qtum_amount,

@@ -15,6 +15,7 @@ use crypto::trezor::client::TrezorClient;
 use crypto::trezor::{TrezorError, TrezorProcessingError};
 use crypto::{Bip32Error, CryptoCtx, CryptoInitError, DerivationPath, HwError, HwProcessingError};
 use keys::{Public as PublicKey, Type as ScriptType};
+use rpc::v1::types::ToTxHash;
 use rpc_task::RpcTaskError;
 use script::{Builder, Script, SignatureVersion, TransactionInputSigner};
 use serialization::{serialize, serialize_with_flags, SERIALIZE_TRANSACTION_WITNESS};
@@ -99,24 +100,24 @@ impl From<Bip32Error> for WithdrawError {
 pub trait UtxoWithdraw<Coin>
 where
     Self: Sized + Sync,
-    Coin: AsRef<UtxoCoinFields> + UtxoCommonOps + MarketCoinOps + Send + Sync + 'static,
+    Coin: UtxoCommonOps,
 {
     fn coin(&self) -> &Coin;
 
-    fn from_address(&self) -> Address;
+    fn sender_address(&self) -> Address;
 
-    fn from_address_string(&self) -> String;
+    fn sender_address_string(&self) -> String;
 
     fn request(&self) -> &WithdrawRequest;
 
     fn signature_version(&self) -> SignatureVersion {
-        match self.from_address().addr_format {
+        match self.sender_address().addr_format {
             UtxoAddressFormat::Segwit => SignatureVersion::WitnessV0,
             _ => self.coin().as_ref().conf.signature_version,
         }
     }
 
-    fn prev_script(&self) -> Script { Builder::build_p2pkh(&self.from_address().hash) }
+    fn prev_script(&self) -> Script { Builder::build_p2pkh(&self.sender_address().hash) }
 
     fn on_generating_transaction(&self) -> Result<(), MmError<WithdrawError>>;
 
@@ -126,6 +127,7 @@ where
 
     async fn build(self) -> WithdrawResult {
         let coin = self.coin();
+        let ticker = coin.as_ref().conf.ticker.clone();
         let decimals = coin.as_ref().decimals;
         let conf = &self.coin().as_ref().conf;
         let req = self.request();
@@ -151,7 +153,7 @@ where
         let script_pubkey = output_script(&to, script_type).to_bytes();
 
         let _utxo_lock = UTXO_LOCK.lock().await;
-        let (unspents, _) = coin.get_unspent_ordered_list(&self.from_address()).await?;
+        let (unspents, _) = coin.get_unspent_ordered_list(&self.sender_address()).await?;
         let (value, fee_policy) = if req.max {
             (
                 unspents.iter().fold(0, |sum, unspent| sum + unspent.value),
@@ -164,7 +166,7 @@ where
         let outputs = vec![TransactionOutput { value, script_pubkey }];
 
         let mut tx_builder = UtxoTxBuilder::new(coin)
-            .with_from_address(self.from_address())
+            .with_from_address(self.sender_address())
             .add_available_inputs(unspents)
             .add_outputs(outputs)
             .with_fee_policy(fee_policy);
@@ -187,9 +189,10 @@ where
             },
             None => (),
         };
-        let (unsigned, data) = tx_builder.build().await.mm_err(|gen_tx_error| {
-            WithdrawError::from_generate_tx_error(gen_tx_error, coin.ticker().to_owned(), decimals)
-        })?;
+        let (unsigned, data) = tx_builder
+            .build()
+            .await
+            .mm_err(|gen_tx_error| WithdrawError::from_generate_tx_error(gen_tx_error, ticker.clone(), decimals))?;
 
         // Sign the `unsigned` transaction.
         let signed = self.sign_tx(unsigned).await?;
@@ -199,7 +202,7 @@ where
 
         let fee_amount = data.fee_amount + data.unused_change.unwrap_or_default();
         let fee_details = UtxoFeeDetails {
-            coin: Some(self.coin().as_ref().conf.ticker.clone()),
+            coin: Some(ticker.clone()),
             amount: big_decimal_from_sat(fee_amount as i64, decimals),
         };
         let tx_hex = match coin.addr_format() {
@@ -207,17 +210,17 @@ where
             _ => serialize(&signed).into(),
         };
         Ok(TransactionDetails {
-            from: vec![self.from_address_string()],
+            from: vec![self.sender_address_string()],
             to: vec![req.to.clone()],
             total_amount: big_decimal_from_sat(data.spent_by_me as i64, decimals),
             spent_by_me: big_decimal_from_sat(data.spent_by_me as i64, decimals),
             received_by_me: big_decimal_from_sat(data.received_by_me as i64, decimals),
             my_balance_change: big_decimal_from_sat(data.received_by_me as i64 - data.spent_by_me as i64, decimals),
-            tx_hash: signed.hash().reversed().to_vec().into(),
+            tx_hash: signed.hash().reversed().to_vec().to_tx_hash(),
             tx_hex,
             fee_details: Some(fee_details.into()),
             block_height: 0,
-            coin: coin.as_ref().conf.ticker.clone(),
+            coin: ticker,
             internal_id: vec![].into(),
             timestamp: now_ms() / 1000,
             kmd_rewards: data.kmd_rewards,
@@ -243,13 +246,13 @@ pub struct InitUtxoWithdraw<'a, Coin> {
 #[async_trait]
 impl<'a, Coin> UtxoWithdraw<Coin> for InitUtxoWithdraw<'a, Coin>
 where
-    Coin: AsRef<UtxoCoinFields> + UtxoCommonOps + MarketCoinOps + UtxoSignerOps + Send + Sync + 'static,
+    Coin: UtxoCommonOps + UtxoSignerOps,
 {
     fn coin(&self) -> &Coin { &self.coin }
 
-    fn from_address(&self) -> Address { self.from_address.clone() }
+    fn sender_address(&self) -> Address { self.from_address.clone() }
 
-    fn from_address_string(&self) -> String { self.from_address_string.clone() }
+    fn sender_address_string(&self) -> String { self.from_address_string.clone() }
 
     fn request(&self) -> &WithdrawRequest { &self.req }
 
@@ -336,12 +339,7 @@ impl<'a, Coin> InitUtxoWithdraw<'a, Coin> {
         task_handle: &'a WithdrawTaskHandle,
     ) -> Result<InitUtxoWithdraw<'a, Coin>, MmError<WithdrawError>>
     where
-        Coin: AsRef<UtxoCoinFields>
-            + UtxoCommonOps
-            + MarketCoinOps
-            + UtxoSignerOps
-            + CoinWithDerivationMethod
-            + GetWithdrawSenderAddress<Address = Address, Pubkey = PublicKey>,
+        Coin: CoinWithDerivationMethod + GetWithdrawSenderAddress<Address = Address, Pubkey = PublicKey>,
     {
         let from = coin.get_withdraw_sender_address(&req).await?;
         let from_address_string = from.address.display_address().map_to_mm(WithdrawError::InternalError)?;
@@ -376,7 +374,6 @@ impl<'a, Coin> InitUtxoWithdraw<'a, Coin> {
         let crypto_ctx = CryptoCtx::from_ctx(&self.ctx)?;
         let hw_ctx = crypto_ctx
             .hw_ctx()
-            .await
             .or_mm_err(|| WithdrawError::NoTrezorDeviceAvailable)?;
 
         let trezor_connect_processor = TrezorRpcTaskConnectProcessor::new(self.task_handle, HwConnectStatuses {
@@ -407,13 +404,13 @@ pub struct StandardUtxoWithdraw<Coin> {
 #[async_trait]
 impl<Coin> UtxoWithdraw<Coin> for StandardUtxoWithdraw<Coin>
 where
-    Coin: AsRef<UtxoCoinFields> + UtxoCommonOps + MarketCoinOps + Send + Sync + 'static,
+    Coin: UtxoCommonOps,
 {
     fn coin(&self) -> &Coin { &self.coin }
 
-    fn from_address(&self) -> Address { self.my_address.clone() }
+    fn sender_address(&self) -> Address { self.my_address.clone() }
 
-    fn from_address_string(&self) -> String { self.my_address_string.clone() }
+    fn sender_address_string(&self) -> String { self.my_address_string.clone() }
 
     fn request(&self) -> &WithdrawRequest { &self.req }
 

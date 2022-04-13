@@ -77,7 +77,7 @@ pub trait QtumDelegationOps {
 }
 
 #[async_trait]
-pub trait QtumBasedCoin: AsRef<UtxoCoinFields> + UtxoCommonOps + MarketCoinOps {
+pub trait QtumBasedCoin: UtxoCommonOps + MarketCoinOps {
     fn convert_to_address(&self, from: &str, to_address_format: Json) -> Result<String, String> {
         let to_address_format: QtumAddressFormat =
             json::from_value(to_address_format).map_err(|e| ERRL!("Error on parse Qtum address format {:?}", e))?;
@@ -680,6 +680,8 @@ impl MarketCoinOps for QtumCoin {
     fn my_balance(&self) -> BalanceFut<CoinBalance> { utxo_common::my_balance(self.clone()) }
 
     fn base_coin_balance(&self) -> BalanceFut<BigDecimal> { utxo_common::base_coin_balance(self) }
+
+    fn platform_ticker(&self) -> &str { self.ticker() }
 
     fn send_raw_tx(&self, tx: &str) -> Box<dyn Future<Item = String, Error = String> + Send> {
         utxo_common::send_raw_tx(&self.utxo_arc, tx)
