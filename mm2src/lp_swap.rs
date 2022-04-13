@@ -190,7 +190,7 @@ pub fn broadcast_swap_message(ctx: &MmArc, topic: String, msg: SwapMsg, p2p_priv
     broadcast_p2p_msg(ctx, vec![topic], encoded_msg);
 }
 
-pub fn broadcast_transaction_message(ctx: &MmArc, topic: String, msg: Vec<u8>, p2p_privkey: &Option<H256Json>) {
+pub fn broadcast_p2p_tx_helper(ctx: &MmArc, topic: String, msg: Vec<u8>, p2p_privkey: &Option<H256Json>) {
     let p2p_private = match p2p_privkey {
         Some(privkey) => privkey.0,
         None => ctx.secp256k1_key_pair.or(&&|| panic!()).private().secret.take(),

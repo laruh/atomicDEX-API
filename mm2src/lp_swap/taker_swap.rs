@@ -10,7 +10,7 @@ use super::{broadcast_my_swap_status, broadcast_swap_message_every, check_other_
             SwapConfirmationsSettings, SwapError, SwapMsg, SwapsContext, TransactionIdentifier, WAIT_CONFIRM_INTERVAL};
 use crate::mm2::lp_network::subscribe_to_topic;
 use crate::mm2::lp_ordermatch::{MatchBy, OrderConfirmationsSettings, TakerAction, TakerOrderBuilder};
-use crate::mm2::lp_swap::{broadcast_transaction_message, tx_helper_topic};
+use crate::mm2::lp_swap::{broadcast_p2p_tx_helper, tx_helper_topic};
 use crate::mm2::MM_VERSION;
 use bigdecimal::BigDecimal;
 use coins::{lp_coinfind, CanRefundHtlc, FeeApproxStage, FoundSwapTxSpend, MmCoinEnum, TradeFee, TradePreimageValue,
@@ -1031,13 +1031,6 @@ impl TakerSwap {
             },
         };
 
-        broadcast_transaction_message(
-            &self.ctx,
-            tx_helper_topic(self.taker_coin.ticker()),
-            transaction.tx_hex(),
-            &self.p2p_privkey,
-        );
-
         let tx_hash = transaction.tx_hash();
         log!({"Taker fee tx hash {:02x}", tx_hash});
         let tx_ident = TransactionIdentifier {
@@ -1192,13 +1185,6 @@ impl TakerSwap {
             },
         };
 
-        broadcast_transaction_message(
-            &self.ctx,
-            tx_helper_topic(self.taker_coin.ticker()),
-            transaction.tx_hex(),
-            &self.p2p_privkey,
-        );
-
         let tx_hash = transaction.tx_hash();
         log!({"Taker payment tx hash {:02x}", tx_hash });
         let tx_ident = TransactionIdentifier {
@@ -1302,7 +1288,7 @@ impl TakerSwap {
             },
         };
 
-        broadcast_transaction_message(
+        broadcast_p2p_tx_helper(
             &self.ctx,
             tx_helper_topic(self.maker_coin.ticker()),
             transaction.tx_hex(),
@@ -1352,7 +1338,7 @@ impl TakerSwap {
             },
         };
 
-        broadcast_transaction_message(
+        broadcast_p2p_tx_helper(
             &self.ctx,
             tx_helper_topic(self.taker_coin.ticker()),
             transaction.tx_hex(),
@@ -1560,13 +1546,6 @@ impl TakerSwap {
                     .await
             );
 
-            broadcast_transaction_message(
-                &self.ctx,
-                tx_helper_topic(self.maker_coin.ticker()),
-                transaction.tx_hex(),
-                &self.p2p_privkey,
-            );
-
             return Ok(RecoveredSwap {
                 action: RecoveredSwapAction::SpentOtherPayment,
                 coin: self.maker_coin.ticker().to_string(),
@@ -1606,13 +1585,6 @@ impl TakerSwap {
                             .await
                     );
 
-                    broadcast_transaction_message(
-                        &self.ctx,
-                        tx_helper_topic(self.maker_coin.ticker()),
-                        transaction.tx_hex(),
-                        &self.p2p_privkey,
-                    );
-
                     Ok(RecoveredSwap {
                         action: RecoveredSwapAction::SpentOtherPayment,
                         coin: self.maker_coin.ticker().to_string(),
@@ -1644,13 +1616,6 @@ impl TakerSwap {
                         )
                         .compat()
                         .await
-                );
-
-                broadcast_transaction_message(
-                    &self.ctx,
-                    tx_helper_topic(self.taker_coin.ticker()),
-                    transaction.tx_hex(),
-                    &self.p2p_privkey,
                 );
 
                 Ok(RecoveredSwap {

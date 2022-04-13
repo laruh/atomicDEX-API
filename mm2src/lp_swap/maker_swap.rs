@@ -11,7 +11,7 @@ use super::{broadcast_my_swap_status, broadcast_swap_message_every, check_other_
 use crate::mm2::lp_dispatcher::{DispatcherContext, LpEvents};
 use crate::mm2::lp_network::subscribe_to_topic;
 use crate::mm2::lp_ordermatch::{MakerOrderBuilder, OrderConfirmationsSettings};
-use crate::mm2::lp_swap::{broadcast_transaction_message, tx_helper_topic};
+use crate::mm2::lp_swap::{broadcast_p2p_tx_helper, tx_helper_topic};
 use crate::mm2::MM_VERSION;
 use bigdecimal::BigDecimal;
 use bitcrypto::dhash160;
@@ -681,13 +681,6 @@ impl MakerSwap {
             },
         };
 
-        broadcast_transaction_message(
-            &self.ctx,
-            tx_helper_topic(self.maker_coin.ticker()),
-            transaction.tx_hex(),
-            &self.p2p_privkey,
-        );
-
         let tx_hash = transaction.tx_hash();
         log!({ "Maker payment tx {:02x}", tx_hash });
 
@@ -861,9 +854,9 @@ impl MakerSwap {
             },
         };
 
-        broadcast_transaction_message(
+        broadcast_p2p_tx_helper(
             &self.ctx,
-            tx_helper_topic(self.taker_coin.ticker()),
+            tx_helper_topic(self.maker_coin.ticker()),
             transaction.tx_hex(),
             &self.p2p_privkey,
         );
@@ -941,7 +934,7 @@ impl MakerSwap {
             },
         };
 
-        broadcast_transaction_message(
+        broadcast_p2p_tx_helper(
             &self.ctx,
             tx_helper_topic(self.maker_coin.ticker()),
             transaction.tx_hex(),
@@ -1167,13 +1160,6 @@ impl MakerSwap {
                 log!("Warning: MakerPayment spent, but TakerPayment is not yet. Trying to spend TakerPayment");
                 let transaction = try_s!(try_spend_taker_payment(self, &secret_hash.0).await);
 
-                broadcast_transaction_message(
-                    &self.ctx,
-                    tx_helper_topic(self.taker_coin.ticker()),
-                    transaction.tx_hex(),
-                    &self.p2p_privkey,
-                );
-
                 Ok(RecoveredSwap {
                     action: RecoveredSwapAction::SpentOtherPayment,
                     coin: self.taker_coin.ticker().to_string(),
@@ -1207,13 +1193,6 @@ impl MakerSwap {
                         )
                         .compat()
                         .await
-                );
-
-                broadcast_transaction_message(
-                    &self.ctx,
-                    tx_helper_topic(self.maker_coin.ticker()),
-                    transaction.tx_hex(),
-                    &self.p2p_privkey,
                 );
 
                 Ok(RecoveredSwap {
