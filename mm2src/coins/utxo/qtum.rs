@@ -12,9 +12,9 @@ use crate::init_create_account::{self, CreateNewAccountParams, InitCreateHDAccou
 use crate::init_withdraw::{InitWithdrawCoin, WithdrawTaskHandle};
 use crate::utxo::utxo_builder::{MergeUtxoArcOps, UtxoCoinBuildError, UtxoCoinBuilder, UtxoCoinBuilderCommonOps,
                                 UtxoFieldsWithHardwareWalletBuilder, UtxoFieldsWithIguanaPrivKeyBuilder};
-use crate::{eth, CanRefundHtlc, CoinBalance, CoinWithDerivationMethod, DelegationError, DelegationFut,
+use crate::{eth, CanRefundHtlc, CoinBalance, CoinWithDerivationMethod, DelegationError, DelegationFut, FailSafeTxFut,
             GetWithdrawSenderAddress, NegotiateSwapContractAddrErr, PrivKeyBuildPolicy, StakingInfosFut, SwapOps,
-            TradePreimageValue, ValidateAddressResult, ValidatePaymentInput, WithdrawFut, WithdrawSenderAddress, FailSafeTxFut};
+            TradePreimageValue, ValidateAddressResult, ValidatePaymentInput, WithdrawFut, WithdrawSenderAddress};
 use common::mm_metrics::MetricsArc;
 use common::mm_number::MmNumber;
 use crypto::trezor::utxo::TrezorUtxoCoin;
@@ -477,7 +477,7 @@ impl UtxoStandardOps for QtumCoin {
 
 #[async_trait]
 impl SwapOps for QtumCoin {
-    fn send_taker_fee(&self, fee_addr: &[u8], amount: BigDecimal, _uuid: &[u8]) -> TransactionFut {
+    fn send_taker_fee(&self, fee_addr: &[u8], amount: BigDecimal, _uuid: &[u8]) -> FailSafeTxFut {
         utxo_common::send_taker_fee(self.clone(), fee_addr, amount)
     }
 
@@ -489,7 +489,7 @@ impl SwapOps for QtumCoin {
         secret_hash: &[u8],
         amount: BigDecimal,
         _swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut {
+    ) -> FailSafeTxFut {
         utxo_common::send_maker_payment(self.clone(), time_lock, maker_pub, taker_pub, secret_hash, amount)
     }
 
@@ -501,7 +501,7 @@ impl SwapOps for QtumCoin {
         secret_hash: &[u8],
         amount: BigDecimal,
         _swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut {
+    ) -> FailSafeTxFut {
         utxo_common::send_taker_payment(self.clone(), time_lock, taker_pub, maker_pub, secret_hash, amount)
     }
 
@@ -513,7 +513,7 @@ impl SwapOps for QtumCoin {
         secret: &[u8],
         htlc_privkey: &[u8],
         _swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut {
+    ) -> FailSafeTxFut {
         utxo_common::send_maker_spends_taker_payment(self.clone(), taker_tx, time_lock, taker_pub, secret, htlc_privkey)
     }
 
@@ -525,7 +525,7 @@ impl SwapOps for QtumCoin {
         secret: &[u8],
         htlc_privkey: &[u8],
         _swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut {
+    ) -> FailSafeTxFut {
         utxo_common::send_taker_spends_maker_payment(self.clone(), maker_tx, time_lock, maker_pub, secret, htlc_privkey)
     }
 
@@ -549,7 +549,7 @@ impl SwapOps for QtumCoin {
         secret_hash: &[u8],
         htlc_privkey: &[u8],
         _swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut {
+    ) -> FailSafeTxFut {
         utxo_common::send_maker_refunds_payment(self.clone(), maker_tx, time_lock, taker_pub, secret_hash, htlc_privkey)
     }
 
@@ -707,7 +707,7 @@ impl MarketCoinOps for QtumCoin {
         wait_until: u64,
         from_block: u64,
         _swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut {
+    ) -> FailSafeTxFut {
         utxo_common::wait_for_output_spend(
             &self.utxo_arc,
             transaction,

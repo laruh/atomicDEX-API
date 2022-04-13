@@ -9,8 +9,8 @@ use crate::utxo::{sat_from_big_decimal, utxo_common, ActualTxFee, AdditionalTxDa
                   UtxoTxGenerationOps, UtxoWeak, VerboseTransactionFrom};
 use crate::{BalanceFut, CoinBalance, FeeApproxStage, FoundSwapTxSpend, HistorySyncState, MarketCoinOps, MmCoin,
             NegotiateSwapContractAddrErr, NumConversError, SwapOps, TradeFee, TradePreimageFut, TradePreimageResult,
-            TradePreimageValue, TransactionDetails, TransactionEnum, TransactionFut, TxFeeDetails,
-            UnexpectedDerivationMethod, ValidateAddressResult, ValidatePaymentInput, WithdrawFut, WithdrawRequest};
+            TradePreimageValue, TransactionDetails, TransactionEnum, FailSafeTxFut, TxFeeDetails,
+            UnexpectedDerivationMethod, ValidateAddressResult, ValidatePaymentInput, WithdrawFut, WithdrawRequest, FailSafeTxErr};
 use crate::{Transaction, WithdrawError};
 use async_trait::async_trait;
 use bitcrypto::dhash160;
@@ -756,7 +756,7 @@ impl MarketCoinOps for ZCoin {
         wait_until: u64,
         from_block: u64,
         _swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut {
+    ) -> FailSafeTxFut {
         utxo_common::wait_for_output_spend(
             self.as_ref(),
             transaction,
@@ -790,11 +790,11 @@ impl MarketCoinOps for ZCoin {
 
 #[async_trait]
 impl SwapOps for ZCoin {
-    fn send_taker_fee(&self, _fee_addr: &[u8], amount: BigDecimal, uuid: &[u8]) -> TransactionFut {
+    fn send_taker_fee(&self, _fee_addr: &[u8], amount: BigDecimal, uuid: &[u8]) -> FailSafeTxFut {
         let selfi = self.clone();
         let uuid = uuid.to_owned();
         let fut = async move {
-            let tx = try_s!(z_send_dex_fee(&selfi, amount, &uuid).await);
+            let tx = try_fs_s!(z_send_dex_fee(&selfi, amount, &uuid).await);
             Ok(tx.into())
         };
         Box::new(fut.boxed().compat())
@@ -808,13 +808,13 @@ impl SwapOps for ZCoin {
         secret_hash: &[u8],
         amount: BigDecimal,
         _swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut {
+    ) -> FailSafeTxFut {
         let selfi = self.clone();
-        let maker_pub = try_fus!(Public::from_slice(maker_pub));
-        let taker_pub = try_fus!(Public::from_slice(taker_pub));
+        let maker_pub = try_fs_fus!(Public::from_slice(maker_pub));
+        let taker_pub = try_fs_fus!(Public::from_slice(taker_pub));
         let secret_hash = secret_hash.to_vec();
         let fut = async move {
-            let utxo_tx = try_s!(z_send_htlc(&selfi, time_lock, &maker_pub, &taker_pub, &secret_hash, amount).await);
+            let utxo_tx = try_fs_s!(z_send_htlc(&selfi, time_lock, &maker_pub, &taker_pub, &secret_hash, amount).await);
             Ok(utxo_tx.into())
         };
         Box::new(fut.boxed().compat())
@@ -828,13 +828,13 @@ impl SwapOps for ZCoin {
         secret_hash: &[u8],
         amount: BigDecimal,
         _swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut {
+    ) -> FailSafeTxFut {
         let selfi = self.clone();
-        let taker_pub = try_fus!(Public::from_slice(taker_pub));
-        let maker_pub = try_fus!(Public::from_slice(maker_pub));
+        let taker_pub = try_fs_fus!(Public::from_slice(taker_pub));
+        let maker_pub = try_fs_fus!(Public::from_slice(maker_pub));
         let secret_hash = secret_hash.to_vec();
         let fut = async move {
-            let utxo_tx = try_s!(z_send_htlc(&selfi, time_lock, &taker_pub, &maker_pub, &secret_hash, amount).await);
+            let utxo_tx = try_fs_s!(z_send_htlc(&selfi, time_lock, &taker_pub, &maker_pub, &secret_hash, amount).await);
             Ok(utxo_tx.into())
         };
         Box::new(fut.boxed().compat())
@@ -848,13 +848,13 @@ impl SwapOps for ZCoin {
         secret: &[u8],
         htlc_privkey: &[u8],
         _swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut {
-        let tx = try_fus!(ZTransaction::read(taker_payment_tx));
-        let key_pair = try_fus!(key_pair_from_secret(htlc_privkey));
+    ) -> FailSafeTxFut {
+        let tx = try_fs_fus!(ZTransaction::read(taker_payment_tx));
+        let key_pair = try_fs_fus!(key_pair_from_secret(htlc_privkey));
         let redeem_script = payment_script(
             time_lock,
             &*dhash160(secret),
-            &try_fus!(Public::from_slice(taker_pub)),
+            &try_fs_fus!(Public::from_slice(taker_pub)),
             key_pair.public(),
         );
         let script_data = ScriptBuilder::default()
@@ -872,7 +872,7 @@ impl SwapOps for ZCoin {
                 script_data,
                 key_pair.private().secret.as_slice(),
             );
-            let tx = try_s!(tx_fut.await);
+            let tx = try_fs_s!(tx_fut.await);
             Ok(tx.into())
         };
         Box::new(fut.boxed().compat())
@@ -886,13 +886,13 @@ impl SwapOps for ZCoin {
         secret: &[u8],
         htlc_privkey: &[u8],
         _swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut {
-        let tx = try_fus!(ZTransaction::read(maker_payment_tx));
-        let key_pair = try_fus!(key_pair_from_secret(htlc_privkey));
+    ) -> FailSafeTxFut {
+        let tx = try_fs_fus!(ZTransaction::read(maker_payment_tx));
+        let key_pair = try_fs_fus!(key_pair_from_secret(htlc_privkey));
         let redeem_script = payment_script(
             time_lock,
             &*dhash160(secret),
-            &try_fus!(Public::from_slice(maker_pub)),
+            &try_fs_fus!(Public::from_slice(maker_pub)),
             key_pair.public(),
         );
         let script_data = ScriptBuilder::default()
@@ -910,7 +910,7 @@ impl SwapOps for ZCoin {
                 script_data,
                 key_pair.private().secret.as_slice(),
             );
-            let tx = try_s!(tx_fut.await);
+            let tx = try_fs_s!(tx_fut.await);
             Ok(tx.into())
         };
         Box::new(fut.boxed().compat())
@@ -924,14 +924,14 @@ impl SwapOps for ZCoin {
         secret_hash: &[u8],
         htlc_privkey: &[u8],
         _swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut {
-        let tx = try_fus!(ZTransaction::read(taker_payment_tx));
-        let key_pair = try_fus!(key_pair_from_secret(htlc_privkey));
+    ) -> FailSafeTxFut {
+        let tx = try_fs_fus!(ZTransaction::read(taker_payment_tx));
+        let key_pair = try_fs_fus!(key_pair_from_secret(htlc_privkey));
         let redeem_script = payment_script(
             time_lock,
             secret_hash,
             key_pair.public(),
-            &try_fus!(Public::from_slice(maker_pub)),
+            &try_fs_fus!(Public::from_slice(maker_pub)),
         );
         let script_data = ScriptBuilder::default().push_opcode(Opcode::OP_1).into_script();
         let selfi = self.clone();
@@ -945,7 +945,7 @@ impl SwapOps for ZCoin {
                 script_data,
                 key_pair.private().secret.as_slice(),
             );
-            let tx = try_s!(tx_fut.await);
+            let tx = try_fs_s!(tx_fut.await);
             Ok(tx.into())
         };
         Box::new(fut.boxed().compat())
@@ -959,14 +959,14 @@ impl SwapOps for ZCoin {
         secret_hash: &[u8],
         htlc_privkey: &[u8],
         _swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut {
-        let tx = try_fus!(ZTransaction::read(maker_payment_tx));
-        let key_pair = try_fus!(key_pair_from_secret(htlc_privkey));
+    ) -> FailSafeTxFut {
+        let tx = try_fs_fus!(ZTransaction::read(maker_payment_tx));
+        let key_pair = try_fs_fus!(key_pair_from_secret(htlc_privkey));
         let redeem_script = payment_script(
             time_lock,
             secret_hash,
             key_pair.public(),
-            &try_fus!(Public::from_slice(taker_pub)),
+            &try_fs_fus!(Public::from_slice(taker_pub)),
         );
         let script_data = ScriptBuilder::default().push_opcode(Opcode::OP_1).into_script();
         let selfi = self.clone();
@@ -980,7 +980,7 @@ impl SwapOps for ZCoin {
                 script_data,
                 key_pair.private().secret.as_slice(),
             );
-            let tx = try_s!(tx_fut.await);
+            let tx = try_fs_s!(tx_fut.await);
             Ok(tx.into())
         };
         Box::new(fut.boxed().compat())

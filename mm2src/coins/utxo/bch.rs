@@ -831,7 +831,7 @@ impl UtxoCommonOps for BchCoin {
 
 #[async_trait]
 impl SwapOps for BchCoin {
-    fn send_taker_fee(&self, fee_addr: &[u8], amount: BigDecimal, _uuid: &[u8]) -> TransactionFut {
+    fn send_taker_fee(&self, fee_addr: &[u8], amount: BigDecimal, _uuid: &[u8]) -> FailSafeTxFut {
         utxo_common::send_taker_fee(self.clone(), fee_addr, amount)
     }
 
@@ -843,7 +843,7 @@ impl SwapOps for BchCoin {
         secret_hash: &[u8],
         amount: BigDecimal,
         _swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut {
+    ) -> FailSafeTxFut {
         utxo_common::send_maker_payment(self.clone(), time_lock, maker_pub, taker_pub, secret_hash, amount)
     }
 
@@ -855,7 +855,7 @@ impl SwapOps for BchCoin {
         secret_hash: &[u8],
         amount: BigDecimal,
         _swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut {
+    ) -> FailSafeTxFut {
         utxo_common::send_taker_payment(self.clone(), time_lock, taker_pub, maker_pub, secret_hash, amount)
     }
 
@@ -867,7 +867,7 @@ impl SwapOps for BchCoin {
         secret: &[u8],
         htlc_privkey: &[u8],
         _swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut {
+    ) -> FailSafeTxFut {
         utxo_common::send_maker_spends_taker_payment(
             self.clone(),
             taker_payment_tx,
@@ -886,7 +886,7 @@ impl SwapOps for BchCoin {
         secret: &[u8],
         htlc_privkey: &[u8],
         _swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut {
+    ) -> FailSafeTxFut {
         utxo_common::send_taker_spends_maker_payment(
             self.clone(),
             maker_payment_tx,
@@ -917,7 +917,7 @@ impl SwapOps for BchCoin {
         secret_hash: &[u8],
         htlc_privkey: &[u8],
         _swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut {
+    ) -> FailSafeTxFut {
         utxo_common::send_maker_refunds_payment(self.clone(), maker_tx, time_lock, taker_pub, secret_hash, htlc_privkey)
     }
 
@@ -1087,7 +1087,7 @@ impl MarketCoinOps for BchCoin {
         wait_until: u64,
         from_block: u64,
         _swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut {
+    ) -> FailSafeTxFut {
         utxo_common::wait_for_output_spend(
             &self.utxo_arc,
             transaction,

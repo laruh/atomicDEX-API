@@ -13,7 +13,7 @@ use crate::mm2::lp_ordermatch::{MatchBy, OrderConfirmationsSettings, TakerAction
 use crate::mm2::lp_swap::{broadcast_p2p_tx_helper, tx_helper_topic};
 use crate::mm2::MM_VERSION;
 use bigdecimal::BigDecimal;
-use coins::{lp_coinfind, CanRefundHtlc, FeeApproxStage, FoundSwapTxSpend, MmCoinEnum, FailSafeTxErr, TradeFee,
+use coins::{lp_coinfind, CanRefundHtlc, FailSafeTxErr, FeeApproxStage, FoundSwapTxSpend, MmCoinEnum, TradeFee,
             TradePreimageValue, ValidatePaymentInput};
 use common::executor::Timer;
 use common::log::{debug, error, warn};
@@ -1024,10 +1024,24 @@ impl TakerSwap {
             .await;
         let transaction = match fee_tx {
             Ok(t) => t,
-            Err(err) => {
-                return Ok((Some(TakerSwapCommand::Finish), vec![
-                    TakerSwapEvent::TakerFeeSendFailed(ERRL!("{}", err).into()),
-                ]))
+            Err(err_enum) => match err_enum {
+                FailSafeTxErr::RpcCallFailed(tx, err) => {
+                    broadcast_p2p_tx_helper(
+                        &self.ctx,
+                        tx_helper_topic(self.taker_coin.ticker()),
+                        tx.tx_hex(),
+                        &self.p2p_privkey,
+                    );
+
+                    return Ok((Some(TakerSwapCommand::Finish), vec![
+                        TakerSwapEvent::TakerFeeSendFailed(ERRL!("{}", err).into()),
+                    ]));
+                },
+                FailSafeTxErr::Error(err) => {
+                    return Ok((Some(TakerSwapCommand::Finish), vec![
+                        TakerSwapEvent::TakerFeeSendFailed(ERRL!("{}", err).into()),
+                    ]))
+                },
             },
         };
 
@@ -1170,10 +1184,24 @@ impl TakerSwap {
 
                     match payment_fut.compat().await {
                         Ok(t) => t,
-                        Err(e) => {
-                            return Ok((Some(TakerSwapCommand::Finish), vec![
-                                TakerSwapEvent::TakerPaymentTransactionFailed(ERRL!("{}", e).into()),
-                            ]))
+                        Err(err_enum) => match err_enum {
+                            FailSafeTxErr::RpcCallFailed(tx, err) => {
+                                broadcast_p2p_tx_helper(
+                                    &self.ctx,
+                                    tx_helper_topic(self.taker_coin.ticker()),
+                                    tx.tx_hex(),
+                                    &self.p2p_privkey,
+                                );
+
+                                return Ok((Some(TakerSwapCommand::Finish), vec![
+                                    TakerSwapEvent::TakerPaymentTransactionFailed(ERRL!("{}", err).into()),
+                                ]));
+                            },
+                            FailSafeTxErr::Error(err) => {
+                                return Ok((Some(TakerSwapCommand::Finish), vec![
+                                    TakerSwapEvent::TakerPaymentTransactionFailed(ERRL!("{}", err).into()),
+                                ]))
+                            },
                         },
                     }
                 },
@@ -1234,13 +1262,30 @@ impl TakerSwap {
         );
         let tx = match f.compat().await {
             Ok(t) => t,
-            Err(e) => {
-                return Ok((Some(TakerSwapCommand::RefundTakerPayment), vec![
-                    TakerSwapEvent::TakerPaymentWaitForSpendFailed(e.into()),
-                    TakerSwapEvent::TakerPaymentWaitRefundStarted {
-                        wait_until: self.wait_refund_until(),
-                    },
-                ]))
+            Err(err_enum) => match err_enum {
+                FailSafeTxErr::RpcCallFailed(tx, err) => {
+                    broadcast_p2p_tx_helper(
+                        &self.ctx,
+                        tx_helper_topic(self.taker_coin.ticker()),
+                        tx.tx_hex(),
+                        &self.p2p_privkey,
+                    );
+
+                    return Ok((Some(TakerSwapCommand::RefundTakerPayment), vec![
+                        TakerSwapEvent::TakerPaymentWaitForSpendFailed(err.into()),
+                        TakerSwapEvent::TakerPaymentWaitRefundStarted {
+                            wait_until: self.wait_refund_until(),
+                        },
+                    ]));
+                },
+                FailSafeTxErr::Error(err) => {
+                    return Ok((Some(TakerSwapCommand::RefundTakerPayment), vec![
+                        TakerSwapEvent::TakerPaymentWaitForSpendFailed(err.into()),
+                        TakerSwapEvent::TakerPaymentWaitRefundStarted {
+                            wait_until: self.wait_refund_until(),
+                        },
+                    ]))
+                },
             },
         };
         drop(send_abort_handle);
@@ -1281,10 +1326,24 @@ impl TakerSwap {
         );
         let transaction = match spend_fut.compat().await {
             Ok(t) => t,
-            Err(err) => {
-                return Ok((Some(TakerSwapCommand::Finish), vec![
-                    TakerSwapEvent::MakerPaymentSpendFailed(ERRL!("{}", err).into()),
-                ]))
+            Err(err_enum) => match err_enum {
+                FailSafeTxErr::RpcCallFailed(tx, err) => {
+                    broadcast_p2p_tx_helper(
+                        &self.ctx,
+                        tx_helper_topic(self.maker_coin.ticker()),
+                        tx.tx_hex(),
+                        &self.p2p_privkey,
+                    );
+
+                    return Ok((Some(TakerSwapCommand::Finish), vec![
+                        TakerSwapEvent::MakerPaymentSpendFailed(ERRL!("{}", err).into()),
+                    ]));
+                },
+                FailSafeTxErr::Error(err) => {
+                    return Ok((Some(TakerSwapCommand::Finish), vec![
+                        TakerSwapEvent::MakerPaymentSpendFailed(ERRL!("{}", err).into()),
+                    ]))
+                },
             },
         };
 
@@ -1546,19 +1605,34 @@ impl TakerSwap {
             let secret = self.r().secret.0;
             let maker_coin_swap_contract_address = self.r().data.maker_coin_swap_contract_address.clone();
 
-            let transaction = try_s!(
-                self.maker_coin
-                    .send_taker_spends_maker_payment(
-                        &maker_payment,
-                        self.maker_payment_lock.load(Ordering::Relaxed) as u32,
-                        other_maker_coin_htlc_pub.as_slice(),
-                        &secret,
-                        maker_coin_htlc_keypair.private().secret.as_slice(),
-                        &maker_coin_swap_contract_address,
-                    )
-                    .compat()
-                    .await
-            );
+            let transaction = match self
+                .maker_coin
+                .send_taker_spends_maker_payment(
+                    &maker_payment,
+                    self.maker_payment_lock.load(Ordering::Relaxed) as u32,
+                    other_maker_coin_htlc_pub.as_slice(),
+                    &secret,
+                    maker_coin_htlc_keypair.private().secret.as_slice(),
+                    &maker_coin_swap_contract_address,
+                )
+                .compat()
+                .await
+            {
+                Ok(t) => t,
+                Err(err_enum) => match err_enum {
+                    FailSafeTxErr::RpcCallFailed(tx, err) => {
+                        broadcast_p2p_tx_helper(
+                            &self.ctx,
+                            tx_helper_topic(self.maker_coin.ticker()),
+                            tx.tx_hex(),
+                            &self.p2p_privkey,
+                        );
+
+                        return ERR!("{}", err);
+                    },
+                    FailSafeTxErr::Error(err) => return ERR!("{}", err),
+                },
+            };
 
             return Ok(RecoveredSwap {
                 action: RecoveredSwapAction::SpentOtherPayment,
@@ -1585,19 +1659,34 @@ impl TakerSwap {
                 FoundSwapTxSpend::Spent(tx) => {
                     check_maker_payment_is_not_spent!();
                     let secret = try_s!(self.taker_coin.extract_secret(&self.r().secret_hash.0, &tx.tx_hex()));
-                    let transaction = try_s!(
-                        self.maker_coin
-                            .send_taker_spends_maker_payment(
-                                &maker_payment,
-                                self.maker_payment_lock.load(Ordering::Relaxed) as u32,
-                                other_maker_coin_htlc_pub.as_slice(),
-                                &secret,
-                                maker_coin_htlc_keypair.private().secret.as_slice(),
-                                &maker_coin_swap_contract_address,
-                            )
-                            .compat()
-                            .await
-                    );
+                    let transaction = match self
+                        .maker_coin
+                        .send_taker_spends_maker_payment(
+                            &maker_payment,
+                            self.maker_payment_lock.load(Ordering::Relaxed) as u32,
+                            other_maker_coin_htlc_pub.as_slice(),
+                            &secret,
+                            maker_coin_htlc_keypair.private().secret.as_slice(),
+                            &maker_coin_swap_contract_address,
+                        )
+                        .compat()
+                        .await
+                    {
+                        Ok(t) => t,
+                        Err(err_enum) => match err_enum {
+                            FailSafeTxErr::RpcCallFailed(tx, err) => {
+                                broadcast_p2p_tx_helper(
+                                    &self.ctx,
+                                    tx_helper_topic(self.maker_coin.ticker()),
+                                    tx.tx_hex(),
+                                    &self.p2p_privkey,
+                                );
+
+                                return ERR!("{}", err);
+                            },
+                            FailSafeTxErr::Error(err) => return ERR!("{}", err),
+                        },
+                    };
 
                     Ok(RecoveredSwap {
                         action: RecoveredSwapAction::SpentOtherPayment,

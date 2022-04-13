@@ -92,11 +92,22 @@ macro_rules! try_fs_fus {
     ($e: expr) => {
         match $e {
             Ok(ok) => ok,
+            Err(err) => return Box::new(futures01::future::err(FailSafeTxErr::Error(ERRL!("{:?}", err)))),
+        }
+    };
+}
+
+macro_rules! try_fs_s {
+    ($e: expr) => {
+        match $e {
+            Ok(ok) => ok,
             Err(err) => {
-                return Box::new(futures01::future::err(FailSafeTxErr::Error(format!(
-                    "{:?}",
+                return Err(FailSafeTxErr::Error(format!(
+                    "{}:{}] {:?}",
+                    file!(),
+                    line!(),
                     err
-                ))))
+                )))
             },
         }
     };
@@ -239,8 +250,6 @@ impl Deref for TransactionEnum {
     }
 }
 
-pub type TransactionFut = Box<dyn Future<Item = TransactionEnum, Error = String> + Send>;
-
 #[derive(Debug, PartialEq)]
 pub enum FailSafeTxErr {
     /// Tx and Error
@@ -286,7 +295,7 @@ pub struct ValidatePaymentInput {
 /// Swap operations (mostly based on the Hash/Time locked transactions implemented by coin wallets).
 #[async_trait]
 pub trait SwapOps {
-    fn send_taker_fee(&self, fee_addr: &[u8], amount: BigDecimal, uuid: &[u8]) -> TransactionFut;
+    fn send_taker_fee(&self, fee_addr: &[u8], amount: BigDecimal, uuid: &[u8]) -> FailSafeTxFut;
 
     fn send_maker_payment(
         &self,
@@ -296,7 +305,7 @@ pub trait SwapOps {
         secret_hash: &[u8],
         amount: BigDecimal,
         swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut;
+    ) -> FailSafeTxFut;
 
     fn send_taker_payment(
         &self,
@@ -306,7 +315,7 @@ pub trait SwapOps {
         secret_hash: &[u8],
         amount: BigDecimal,
         swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut;
+    ) -> FailSafeTxFut;
 
     fn send_maker_spends_taker_payment(
         &self,
@@ -316,7 +325,7 @@ pub trait SwapOps {
         secret: &[u8],
         htlc_privkey: &[u8],
         swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut;
+    ) -> FailSafeTxFut;
 
     fn send_taker_spends_maker_payment(
         &self,
@@ -326,7 +335,7 @@ pub trait SwapOps {
         secret: &[u8],
         htlc_privkey: &[u8],
         swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut;
+    ) -> FailSafeTxFut;
 
     fn send_taker_refunds_payment(
         &self,
@@ -346,7 +355,7 @@ pub trait SwapOps {
         secret_hash: &[u8],
         htlc_privkey: &[u8],
         swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut;
+    ) -> FailSafeTxFut;
 
     fn validate_fee(
         &self,
@@ -462,7 +471,7 @@ pub trait MarketCoinOps {
         wait_until: u64,
         from_block: u64,
         swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut;
+    ) -> FailSafeTxFut;
 
     fn tx_enum_from_bytes(&self, bytes: &[u8]) -> Result<TransactionEnum, String>;
 

@@ -1,4 +1,4 @@
-use super::{CoinBalance, HistorySyncState, MarketCoinOps, MmCoin, SwapOps, TradeFee, TransactionEnum, TransactionFut};
+use super::{CoinBalance, HistorySyncState, MarketCoinOps, MmCoin, SwapOps, TradeFee, TransactionEnum};
 use crate::solana::solana_common::{lamports_to_sol, PrepareTransferData, SufficientBalanceError};
 use crate::solana::spl::SplTokenInfo;
 use crate::{BalanceError, BalanceFut, FeeApproxStage, FoundSwapTxSpend, NegotiateSwapContractAddrErr,
@@ -404,7 +404,7 @@ impl MarketCoinOps for SolanaCoin {
         _wait_until: u64,
         _from_block: u64,
         _swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut {
+    ) -> FailSafeTxFut {
         unimplemented!()
     }
 
@@ -426,7 +426,7 @@ impl MarketCoinOps for SolanaCoin {
 #[allow(clippy::forget_ref, clippy::forget_copy, clippy::cast_ref_to_mut)]
 #[async_trait]
 impl SwapOps for SolanaCoin {
-    fn send_taker_fee(&self, _fee_addr: &[u8], amount: BigDecimal, _uuid: &[u8]) -> TransactionFut { unimplemented!() }
+    fn send_taker_fee(&self, _fee_addr: &[u8], amount: BigDecimal, _uuid: &[u8]) -> FailSafeTxFut { unimplemented!() }
 
     fn send_maker_payment(
         &self,
@@ -436,7 +436,7 @@ impl SwapOps for SolanaCoin {
         secret_hash: &[u8],
         amount: BigDecimal,
         swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut {
+    ) -> FailSafeTxFut {
         unimplemented!()
     }
 
@@ -448,7 +448,7 @@ impl SwapOps for SolanaCoin {
         secret_hash: &[u8],
         amount: BigDecimal,
         swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut {
+    ) -> FailSafeTxFut {
         unimplemented!()
     }
 
@@ -460,7 +460,7 @@ impl SwapOps for SolanaCoin {
         secret: &[u8],
         htlc_privkey: &[u8],
         swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut {
+    ) -> FailSafeTxFut {
         unimplemented!()
     }
 
@@ -472,7 +472,7 @@ impl SwapOps for SolanaCoin {
         secret: &[u8],
         htlc_privkey: &[u8],
         swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut {
+    ) -> FailSafeTxFut {
         unimplemented!()
     }
 
@@ -496,7 +496,7 @@ impl SwapOps for SolanaCoin {
         secret_hash: &[u8],
         htlc_privkey: &[u8],
         swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut {
+    ) -> FailSafeTxFut {
         unimplemented!()
     }
 
