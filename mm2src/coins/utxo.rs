@@ -1519,7 +1519,7 @@ where
         Ok(_) => (),
         Err(err) => {
             return Err(FailSafeTxErr::RpcCallFailed(
-                TransactionEnum::from(signed),
+                Box::new(TransactionEnum::from(signed)),
                 format!("{:?}", err),
             ));
         },

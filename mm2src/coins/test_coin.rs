@@ -1,7 +1,7 @@
 use super::{CoinBalance, HistorySyncState, MarketCoinOps, MmCoin, SwapOps, TradeFee, TransactionEnum};
 use crate::{BalanceFut, FeeApproxStage, FoundSwapTxSpend, NegotiateSwapContractAddrErr, TradePreimageFut,
-            TradePreimageResult, TradePreimageValue, ValidateAddressResult, ValidatePaymentInput, WithdrawFut,
-            WithdrawRequest, FailSafeTxFut};
+            TradePreimageResult, TradePreimageValue, TransactionFut, ValidateAddressResult, ValidatePaymentInput,
+            WithdrawFut, WithdrawRequest};
 use async_trait::async_trait;
 use bigdecimal::BigDecimal;
 use common::mm_ctx::MmArc;
@@ -63,7 +63,7 @@ impl MarketCoinOps for TestCoin {
         wait_until: u64,
         from_block: u64,
         swap_contract_address: &Option<BytesJson>,
-    ) -> FailSafeTxFut {
+    ) -> TransactionFut {
         unimplemented!()
     }
 
@@ -82,7 +82,7 @@ impl MarketCoinOps for TestCoin {
 #[mockable]
 #[allow(clippy::forget_ref, clippy::forget_copy, clippy::cast_ref_to_mut)]
 impl SwapOps for TestCoin {
-    fn send_taker_fee(&self, fee_addr: &[u8], amount: BigDecimal, uuid: &[u8]) -> FailSafeTxFut { unimplemented!() }
+    fn send_taker_fee(&self, fee_addr: &[u8], amount: BigDecimal, uuid: &[u8]) -> TransactionFut { unimplemented!() }
 
     fn send_maker_payment(
         &self,
@@ -92,7 +92,7 @@ impl SwapOps for TestCoin {
         secret_hash: &[u8],
         amount: BigDecimal,
         swap_contract_address: &Option<BytesJson>,
-    ) -> FailSafeTxFut {
+    ) -> TransactionFut {
         unimplemented!()
     }
 
@@ -104,7 +104,7 @@ impl SwapOps for TestCoin {
         secret_hash: &[u8],
         amount: BigDecimal,
         swap_contract_address: &Option<BytesJson>,
-    ) -> FailSafeTxFut {
+    ) -> TransactionFut {
         unimplemented!()
     }
 
@@ -116,7 +116,7 @@ impl SwapOps for TestCoin {
         secret: &[u8],
         htlc_privkey: &[u8],
         swap_contract_address: &Option<BytesJson>,
-    ) -> FailSafeTxFut {
+    ) -> TransactionFut {
         unimplemented!()
     }
 
@@ -128,7 +128,7 @@ impl SwapOps for TestCoin {
         secret: &[u8],
         htlc_privkey: &[u8],
         swap_contract_address: &Option<BytesJson>,
-    ) -> FailSafeTxFut {
+    ) -> TransactionFut {
         unimplemented!()
     }
 
@@ -140,7 +140,7 @@ impl SwapOps for TestCoin {
         secret_hash: &[u8],
         htlc_privkey: &[u8],
         swap_contract_address: &Option<BytesJson>,
-    ) -> FailSafeTxFut {
+    ) -> TransactionFut {
         unimplemented!()
     }
 
@@ -152,7 +152,7 @@ impl SwapOps for TestCoin {
         secret_hash: &[u8],
         htlc_privkey: &[u8],
         swap_contract_address: &Option<BytesJson>,
-    ) -> FailSafeTxFut {
+    ) -> TransactionFut {
         unimplemented!()
     }
 

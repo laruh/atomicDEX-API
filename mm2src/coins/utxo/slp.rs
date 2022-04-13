@@ -10,11 +10,11 @@ use crate::utxo::utxo_common::{self, big_decimal_from_sat_unsigned, payment_scri
 use crate::utxo::{generate_and_send_tx, sat_from_big_decimal, ActualTxFee, AdditionalTxData, BroadcastTxErr,
                   FeePolicy, GenerateTxError, RecentlySpentOutPoints, UtxoCoinConf, UtxoCoinFields, UtxoCommonOps,
                   UtxoTx, UtxoTxBroadcastOps, UtxoTxGenerationOps};
-use crate::{BalanceFut, CoinBalance, FailSafeTxErr, FailSafeTxFut, FeeApproxStage, FoundSwapTxSpend, HistorySyncState,
-            MarketCoinOps, MmCoin, NegotiateSwapContractAddrErr, NumConversError, PrivKeyNotAllowed, SwapOps,
-            TradeFee, TradePreimageError, TradePreimageFut, TradePreimageResult, TradePreimageValue,
-            TransactionDetails, TransactionEnum, TxFeeDetails, UnexpectedDerivationMethod,
-            ValidateAddressResult, ValidatePaymentInput, WithdrawError, WithdrawFee, WithdrawFut, WithdrawRequest};
+use crate::{BalanceFut, CoinBalance, FailSafeTxErr, FeeApproxStage, FoundSwapTxSpend, HistorySyncState, MarketCoinOps,
+            MmCoin, NegotiateSwapContractAddrErr, NumConversError, PrivKeyNotAllowed, SwapOps, TradeFee,
+            TradePreimageError, TradePreimageFut, TradePreimageResult, TradePreimageValue, TransactionDetails,
+            TransactionEnum, TransactionFut, TxFeeDetails, UnexpectedDerivationMethod, ValidateAddressResult,
+            ValidatePaymentInput, WithdrawError, WithdrawFee, WithdrawFut, WithdrawRequest};
 
 use async_trait::async_trait;
 use bitcrypto::dhash160;
@@ -1125,7 +1125,7 @@ impl MarketCoinOps for SlpToken {
         wait_until: u64,
         from_block: u64,
         _swap_contract_address: &Option<BytesJson>,
-    ) -> FailSafeTxFut {
+    ) -> TransactionFut {
         utxo_common::wait_for_output_spend(
             self.platform_coin.as_ref(),
             transaction,
@@ -1150,7 +1150,7 @@ impl MarketCoinOps for SlpToken {
 
 #[async_trait]
 impl SwapOps for SlpToken {
-    fn send_taker_fee(&self, fee_addr: &[u8], amount: BigDecimal, _uuid: &[u8]) -> FailSafeTxFut {
+    fn send_taker_fee(&self, fee_addr: &[u8], amount: BigDecimal, _uuid: &[u8]) -> TransactionFut {
         let coin = self.clone();
         let fee_pubkey = try_fs_fus!(Public::from_slice(fee_addr));
         let script_pubkey = ScriptBuilder::build_p2pkh(&fee_pubkey.address_hash().into()).into();
@@ -1180,7 +1180,7 @@ impl SwapOps for SlpToken {
         secret_hash: &[u8],
         amount: BigDecimal,
         _swap_contract_address: &Option<BytesJson>,
-    ) -> FailSafeTxFut {
+    ) -> TransactionFut {
         let maker_pub = try_fs_fus!(Public::from_slice(maker_pub));
         let taker_pub = try_fs_fus!(Public::from_slice(taker_pub));
         let amount = try_fs_fus!(sat_from_big_decimal(&amount, self.decimals()));
@@ -1205,7 +1205,7 @@ impl SwapOps for SlpToken {
         secret_hash: &[u8],
         amount: BigDecimal,
         _swap_contract_address: &Option<BytesJson>,
-    ) -> FailSafeTxFut {
+    ) -> TransactionFut {
         let taker_pub = try_fs_fus!(Public::from_slice(taker_pub));
         let maker_pub = try_fs_fus!(Public::from_slice(maker_pub));
         let amount = try_fs_fus!(sat_from_big_decimal(&amount, self.decimals()));
@@ -1230,7 +1230,7 @@ impl SwapOps for SlpToken {
         secret: &[u8],
         htlc_privkey: &[u8],
         _swap_contract_address: &Option<BytesJson>,
-    ) -> FailSafeTxFut {
+    ) -> TransactionFut {
         let tx = taker_payment_tx.to_owned();
         let taker_pub = try_fs_fus!(Public::from_slice(taker_pub));
         let secret = secret.to_owned();
@@ -1255,7 +1255,7 @@ impl SwapOps for SlpToken {
         secret: &[u8],
         htlc_privkey: &[u8],
         _swap_contract_address: &Option<BytesJson>,
-    ) -> FailSafeTxFut {
+    ) -> TransactionFut {
         let tx = maker_payment_tx.to_owned();
         let maker_pub = try_fs_fus!(Public::from_slice(maker_pub));
         let secret = secret.to_owned();
@@ -1280,7 +1280,7 @@ impl SwapOps for SlpToken {
         secret_hash: &[u8],
         htlc_privkey: &[u8],
         _swap_contract_address: &Option<BytesJson>,
-    ) -> FailSafeTxFut {
+    ) -> TransactionFut {
         let tx = taker_payment_tx.to_owned();
         let maker_pub = try_fs_fus!(Public::from_slice(maker_pub));
         let secret_hash = secret_hash.to_owned();
@@ -1294,7 +1294,7 @@ impl SwapOps for SlpToken {
             );
             Ok(tx.into())
         };
-        Box::new(fut.boxed().compat().map_err(|e| FailSafeTxErr::Error(e)))
+        Box::new(fut.boxed().compat().map_err(FailSafeTxErr::Error))
     }
 
     fn send_maker_refunds_payment(
@@ -1305,7 +1305,7 @@ impl SwapOps for SlpToken {
         secret_hash: &[u8],
         htlc_privkey: &[u8],
         _swap_contract_address: &Option<BytesJson>,
-    ) -> FailSafeTxFut {
+    ) -> TransactionFut {
         let tx = maker_payment_tx.to_owned();
         let taker_pub = try_fs_fus!(Public::from_slice(taker_pub));
         let secret_hash = secret_hash.to_owned();
@@ -2001,7 +2001,7 @@ mod slp_tests {
             script_pubkey: ScriptBuilder::build_p2sh(&dhash160(&htlc_script).into()).into(),
         };
 
-        let FailSafeTxErr::Error(err) = block_on(generate_and_send_tx(
+        let tx_err = block_on(generate_and_send_tx(
             &fusd,
             unspents,
             None,
@@ -2010,6 +2010,12 @@ mod slp_tests {
             vec![slp_send_op_return_out, invalid_slp_send_out],
         ))
         .unwrap_err();
+
+        let err = match tx_err {
+            FailSafeTxErr::RpcCallFailed(_tx, err) => err,
+            FailSafeTxErr::Error(err) => err,
+        };
+
         println!("{:?}", err);
         assert!(err.contains("is not valid with reason outputs greater than inputs"));
 

@@ -8,8 +8,8 @@ use crate::init_withdraw::WithdrawTaskHandle;
 use crate::utxo::rpc_clients::{electrum_script_hash, BlockHashOrHeight, UnspentInfo, UtxoRpcClientEnum,
                                UtxoRpcClientOps, UtxoRpcResult};
 use crate::utxo::utxo_withdraw::{InitUtxoWithdraw, StandardUtxoWithdraw, UtxoWithdraw};
-use crate::{CanRefundHtlc, CoinBalance, CoinWithDerivationMethod, FailSafeTxErr, FailSafeTxFut,
-            GetWithdrawSenderAddress, HDAddressId, TradePreimageValue, TxFeeDetails, ValidateAddressResult,
+use crate::{CanRefundHtlc, CoinBalance, CoinWithDerivationMethod, FailSafeTxErr, GetWithdrawSenderAddress,
+            HDAddressId, TradePreimageValue, TransactionFut, TxFeeDetails, ValidateAddressResult,
             ValidatePaymentInput, WithdrawFrom, WithdrawResult, WithdrawSenderAddress};
 use bigdecimal::{BigDecimal, Zero};
 pub use bitcrypto::{dhash160, sha256, ChecksumType};
@@ -561,7 +561,7 @@ pub async fn get_current_mtp(coin: &UtxoCoinFields, coin_variant: CoinVariant) -
         .await
 }
 
-pub fn send_outputs_from_my_address<T>(coin: T, outputs: Vec<TransactionOutput>) -> FailSafeTxFut
+pub fn send_outputs_from_my_address<T>(coin: T, outputs: Vec<TransactionOutput>) -> TransactionFut
 where
     T: AsRef<UtxoCoinFields> + UtxoCommonOps + Send + Sync + 'static,
 {
@@ -1014,7 +1014,7 @@ where
     })
 }
 
-pub fn send_taker_fee<T>(coin: T, fee_pub_key: &[u8], amount: BigDecimal) -> FailSafeTxFut
+pub fn send_taker_fee<T>(coin: T, fee_pub_key: &[u8], amount: BigDecimal) -> TransactionFut
 where
     T: AsRef<UtxoCoinFields> + UtxoCommonOps + Send + Sync + 'static,
 {
@@ -1041,7 +1041,7 @@ pub fn send_maker_payment<T>(
     taker_pub: &[u8],
     secret_hash: &[u8],
     amount: BigDecimal,
-) -> FailSafeTxFut
+) -> TransactionFut
 where
     T: AsRef<UtxoCoinFields> + UtxoCommonOps + Clone + Send + Sync + 'static,
 {
@@ -1078,7 +1078,7 @@ pub fn send_taker_payment<T>(
     maker_pub: &[u8],
     secret_hash: &[u8],
     amount: BigDecimal,
-) -> FailSafeTxFut
+) -> TransactionFut
 where
     T: AsRef<UtxoCoinFields> + UtxoCommonOps + Clone + Send + Sync + 'static,
 {
@@ -1116,7 +1116,7 @@ pub fn send_maker_spends_taker_payment<T>(
     taker_pub: &[u8],
     secret: &[u8],
     htlc_privkey: &[u8],
-) -> FailSafeTxFut
+) -> TransactionFut
 where
     T: AsRef<UtxoCoinFields> + UtxoCommonOps + Send + Sync + 'static,
 {
@@ -1164,7 +1164,7 @@ where
             Ok(_) => (),
             Err(err) => {
                 return Err(FailSafeTxErr::RpcCallFailed(
-                    TransactionEnum::from(transaction),
+                    Box::new(TransactionEnum::from(transaction)),
                     format!("{:?}", err),
                 ));
             },
@@ -1181,7 +1181,7 @@ pub fn send_taker_spends_maker_payment<T>(
     maker_pub: &[u8],
     secret: &[u8],
     htlc_privkey: &[u8],
-) -> FailSafeTxFut
+) -> TransactionFut
 where
     T: AsRef<UtxoCoinFields> + UtxoCommonOps + Send + Sync + 'static,
 {
@@ -1228,7 +1228,7 @@ where
             Ok(_) => (),
             Err(err) => {
                 return Err(FailSafeTxErr::RpcCallFailed(
-                    TransactionEnum::from(transaction),
+                    Box::new(TransactionEnum::from(transaction)),
                     format!("{:?}", err),
                 ));
             },
@@ -1245,7 +1245,7 @@ pub fn send_taker_refunds_payment<T>(
     maker_pub: &[u8],
     secret_hash: &[u8],
     htlc_privkey: &[u8],
-) -> FailSafeTxFut
+) -> TransactionFut
 where
     T: AsRef<UtxoCoinFields> + UtxoCommonOps + Send + Sync + 'static,
 {
@@ -1294,7 +1294,7 @@ where
             Ok(_) => (),
             Err(err) => {
                 return Err(FailSafeTxErr::RpcCallFailed(
-                    TransactionEnum::from(transaction),
+                    Box::new(TransactionEnum::from(transaction)),
                     format!("{:?}", err),
                 ));
             },
@@ -1312,7 +1312,7 @@ pub fn send_maker_refunds_payment<T>(
     taker_pub: &[u8],
     secret_hash: &[u8],
     htlc_privkey: &[u8],
-) -> FailSafeTxFut
+) -> TransactionFut
 where
     T: AsRef<UtxoCoinFields> + UtxoCommonOps + Send + Sync + 'static,
 {
@@ -1357,7 +1357,7 @@ where
             Ok(_) => (),
             Err(err) => {
                 return Err(FailSafeTxErr::RpcCallFailed(
-                    TransactionEnum::from(transaction),
+                    Box::new(TransactionEnum::from(transaction)),
                     format!("{:?}", err),
                 ));
             },
@@ -1793,7 +1793,7 @@ pub fn wait_for_output_spend(
     output_index: usize,
     from_block: u64,
     wait_until: u64,
-) -> FailSafeTxFut {
+) -> TransactionFut {
     let mut tx: UtxoTx = try_fs_fus!(deserialize(tx_bytes).map_err(|e| ERRL!("{:?}", e)));
     tx.tx_hash_algo = coin.tx_hash_algo;
     let client = coin.rpc_client.clone();

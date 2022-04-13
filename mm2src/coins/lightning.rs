@@ -2,9 +2,9 @@ use super::{lp_coinfind_or_err, MmCoinEnum};
 use crate::utxo::rpc_clients::UtxoRpcClientEnum;
 use crate::utxo::utxo_common::{big_decimal_from_sat_unsigned, UtxoTxBuilder};
 use crate::utxo::{sat_from_big_decimal, BlockchainNetwork, FeePolicy, UtxoCommonOps, UtxoTxGenerationOps};
-use crate::{BalanceFut, CoinBalance, FailSafeTxFut, FeeApproxStage, FoundSwapTxSpend, HistorySyncState, MarketCoinOps,
-            MmCoin, NegotiateSwapContractAddrErr, SwapOps, TradeFee, TradePreimageFut, TradePreimageResult,
-            TradePreimageValue, TransactionEnum, UtxoStandardCoin, ValidateAddressResult,
+use crate::{BalanceFut, CoinBalance, FeeApproxStage, FoundSwapTxSpend, HistorySyncState, MarketCoinOps, MmCoin,
+            NegotiateSwapContractAddrErr, SwapOps, TradeFee, TradePreimageFut, TradePreimageResult,
+            TradePreimageValue, TransactionEnum, TransactionFut, UtxoStandardCoin, ValidateAddressResult,
             ValidatePaymentInput, WithdrawError, WithdrawFut, WithdrawRequest};
 use async_trait::async_trait;
 use bigdecimal::BigDecimal;
@@ -220,7 +220,7 @@ impl LightningCoin {
 #[async_trait]
 // Todo: Implement this when implementing swaps for lightning as it's is used only for swaps
 impl SwapOps for LightningCoin {
-    fn send_taker_fee(&self, _fee_addr: &[u8], _amount: BigDecimal, _uuid: &[u8]) -> FailSafeTxFut { unimplemented!() }
+    fn send_taker_fee(&self, _fee_addr: &[u8], _amount: BigDecimal, _uuid: &[u8]) -> TransactionFut { unimplemented!() }
 
     fn send_maker_payment(
         &self,
@@ -230,7 +230,7 @@ impl SwapOps for LightningCoin {
         _secret_hash: &[u8],
         _amount: BigDecimal,
         _swap_contract_address: &Option<BytesJson>,
-    ) -> FailSafeTxFut {
+    ) -> TransactionFut {
         unimplemented!()
     }
 
@@ -242,7 +242,7 @@ impl SwapOps for LightningCoin {
         _secret_hash: &[u8],
         _amount: BigDecimal,
         _swap_contract_address: &Option<BytesJson>,
-    ) -> FailSafeTxFut {
+    ) -> TransactionFut {
         unimplemented!()
     }
 
@@ -254,7 +254,7 @@ impl SwapOps for LightningCoin {
         _secret: &[u8],
         _htlc_privkey: &[u8],
         _swap_contract_address: &Option<BytesJson>,
-    ) -> FailSafeTxFut {
+    ) -> TransactionFut {
         unimplemented!()
     }
 
@@ -266,7 +266,7 @@ impl SwapOps for LightningCoin {
         _secret: &[u8],
         _htlc_privkey: &[u8],
         _swap_contract_address: &Option<BytesJson>,
-    ) -> FailSafeTxFut {
+    ) -> TransactionFut {
         unimplemented!()
     }
 
@@ -278,7 +278,7 @@ impl SwapOps for LightningCoin {
         _secret_hash: &[u8],
         _htlc_privkey: &[u8],
         _swap_contract_address: &Option<BytesJson>,
-    ) -> FailSafeTxFut {
+    ) -> TransactionFut {
         unimplemented!()
     }
 
@@ -290,7 +290,7 @@ impl SwapOps for LightningCoin {
         _secret_hash: &[u8],
         _htlc_privkey: &[u8],
         _swap_contract_address: &Option<BytesJson>,
-    ) -> FailSafeTxFut {
+    ) -> TransactionFut {
         unimplemented!()
     }
 
@@ -426,7 +426,7 @@ impl MarketCoinOps for LightningCoin {
         _wait_until: u64,
         _from_block: u64,
         _swap_contract_address: &Option<BytesJson>,
-    ) -> FailSafeTxFut {
+    ) -> TransactionFut {
         unimplemented!()
     }
 

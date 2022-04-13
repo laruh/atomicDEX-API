@@ -65,7 +65,7 @@ pub use ethcore_transaction::SignedTransaction as SignedEthTx;
 pub use rlp;
 
 mod web3_transport;
-use crate::{FailSafeTxErr, FailSafeTxFut, ValidatePaymentInput};
+use crate::{FailSafeTxErr, TransactionFut, ValidatePaymentInput};
 use common::mm_number::MmNumber;
 use common::privkey::key_pair_from_secret;
 use web3_transport::{EthFeeHistoryNamespace, Web3Transport};
@@ -665,12 +665,12 @@ impl Deref for EthCoin {
 
 #[async_trait]
 impl SwapOps for EthCoin {
-    fn send_taker_fee(&self, fee_addr: &[u8], amount: BigDecimal, _uuid: &[u8]) -> FailSafeTxFut {
+    fn send_taker_fee(&self, fee_addr: &[u8], amount: BigDecimal, _uuid: &[u8]) -> TransactionFut {
         let address = try_fs_fus!(addr_from_raw_pubkey(fee_addr));
 
         Box::new(
             self.send_to_address(address, try_fs_fus!(wei_from_big_decimal(&amount, self.decimals)))
-                .map_err(|e| FailSafeTxErr::Error(e))
+                .map_err(FailSafeTxErr::Error)
                 .map(TransactionEnum::from),
         )
     }
@@ -683,7 +683,7 @@ impl SwapOps for EthCoin {
         secret_hash: &[u8],
         amount: BigDecimal,
         swap_contract_address: &Option<BytesJson>,
-    ) -> FailSafeTxFut {
+    ) -> TransactionFut {
         let taker_addr = try_fs_fus!(addr_from_raw_pubkey(taker_pub));
         let swap_contract_address = try_fs_fus!(swap_contract_address.try_to_address());
 
@@ -696,7 +696,7 @@ impl SwapOps for EthCoin {
                 taker_addr,
                 swap_contract_address,
             )
-            .map_err(|e| FailSafeTxErr::Error(e))
+            .map_err(FailSafeTxErr::Error)
             .map(TransactionEnum::from),
         )
     }
@@ -709,7 +709,7 @@ impl SwapOps for EthCoin {
         secret_hash: &[u8],
         amount: BigDecimal,
         swap_contract_address: &Option<BytesJson>,
-    ) -> FailSafeTxFut {
+    ) -> TransactionFut {
         let maker_addr = try_fs_fus!(addr_from_raw_pubkey(maker_pub));
         let swap_contract_address = try_fs_fus!(swap_contract_address.try_to_address());
 
@@ -722,7 +722,7 @@ impl SwapOps for EthCoin {
                 maker_addr,
                 swap_contract_address,
             )
-            .map_err(|e| FailSafeTxErr::Error(e))
+            .map_err(FailSafeTxErr::Error)
             .map(TransactionEnum::from),
         )
     }
@@ -735,14 +735,14 @@ impl SwapOps for EthCoin {
         secret: &[u8],
         _htlc_privkey: &[u8],
         swap_contract_address: &Option<BytesJson>,
-    ) -> FailSafeTxFut {
+    ) -> TransactionFut {
         let tx: UnverifiedTransaction = try_fs_fus!(rlp::decode(taker_payment_tx));
         let signed = try_fs_fus!(SignedEthTx::new(tx));
         let swap_contract_address = try_fs_fus!(swap_contract_address.try_to_address());
 
         Box::new(
             self.spend_hash_time_locked_payment(signed, swap_contract_address, secret)
-                .map_err(|e| FailSafeTxErr::Error(e))
+                .map_err(FailSafeTxErr::Error)
                 .map(TransactionEnum::from),
         )
     }
@@ -755,13 +755,13 @@ impl SwapOps for EthCoin {
         secret: &[u8],
         _htlc_privkey: &[u8],
         swap_contract_address: &Option<BytesJson>,
-    ) -> FailSafeTxFut {
+    ) -> TransactionFut {
         let tx: UnverifiedTransaction = try_fs_fus!(rlp::decode(maker_payment_tx));
         let signed = try_fs_fus!(SignedEthTx::new(tx));
         let swap_contract_address = try_fs_fus!(swap_contract_address.try_to_address());
         Box::new(
             self.spend_hash_time_locked_payment(signed, swap_contract_address, secret)
-                .map_err(|e| FailSafeTxErr::Error(e))
+                .map_err(FailSafeTxErr::Error)
                 .map(TransactionEnum::from),
         )
     }
@@ -774,14 +774,14 @@ impl SwapOps for EthCoin {
         _secret_hash: &[u8],
         _htlc_privkey: &[u8],
         swap_contract_address: &Option<BytesJson>,
-    ) -> FailSafeTxFut {
+    ) -> TransactionFut {
         let tx: UnverifiedTransaction = try_fs_fus!(rlp::decode(taker_payment_tx));
         let signed = try_fs_fus!(SignedEthTx::new(tx));
         let swap_contract_address = try_fs_fus!(swap_contract_address.try_to_address());
 
         Box::new(
             self.refund_hash_time_locked_payment(swap_contract_address, signed)
-                .map_err(|e| FailSafeTxErr::Error(e))
+                .map_err(FailSafeTxErr::Error)
                 .map(TransactionEnum::from),
         )
     }
@@ -794,14 +794,14 @@ impl SwapOps for EthCoin {
         _secret_hash: &[u8],
         _htlc_privkey: &[u8],
         swap_contract_address: &Option<BytesJson>,
-    ) -> FailSafeTxFut {
+    ) -> TransactionFut {
         let tx: UnverifiedTransaction = try_fs_fus!(rlp::decode(maker_payment_tx));
         let signed = try_fs_fus!(SignedEthTx::new(tx));
         let swap_contract_address = try_fs_fus!(swap_contract_address.try_to_address());
 
         Box::new(
             self.refund_hash_time_locked_payment(swap_contract_address, signed)
-                .map_err(|e| FailSafeTxErr::Error(e))
+                .map_err(FailSafeTxErr::Error)
                 .map(TransactionEnum::from),
         )
     }
@@ -1213,7 +1213,7 @@ impl MarketCoinOps for EthCoin {
         wait_until: u64,
         from_block: u64,
         swap_contract_address: &Option<BytesJson>,
-    ) -> FailSafeTxFut {
+    ) -> TransactionFut {
         let unverified: UnverifiedTransaction = try_fs_fus!(rlp::decode(tx_bytes));
         let tx = try_fs_fus!(SignedEthTx::new(unverified));
         let swap_contract_address = try_fs_fus!(swap_contract_address.try_to_address());

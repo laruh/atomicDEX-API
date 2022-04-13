@@ -678,7 +678,7 @@ impl MakerSwap {
 
                                 return Ok((Some(MakerSwapCommand::Finish), vec![
                                     MakerSwapEvent::MakerPaymentTransactionFailed(ERRL!("{}", err).into()),
-                                ]))
+                                ]));
                             },
                             FailSafeTxErr::Error(err) => {
                                 return Ok((Some(MakerSwapCommand::Finish), vec![
@@ -873,7 +873,7 @@ impl MakerSwap {
                         MakerSwapEvent::MakerPaymentWaitRefundStarted {
                             wait_until: self.wait_refund_until(),
                         },
-                    ]))
+                    ]));
                 },
                 FailSafeTxErr::Error(err) => {
                     return Ok((Some(MakerSwapCommand::RefundMakerPayment), vec![
@@ -972,7 +972,7 @@ impl MakerSwap {
                         MakerSwapEvent::MakerPaymentRefundFailed(
                             ERRL!("!maker_coin.send_maker_refunds_payment: {}", err).into(),
                         ),
-                    ]))
+                    ]));
                 },
                 FailSafeTxErr::Error(err) => {
                     return Ok((Some(MakerSwapCommand::Finish), vec![
