@@ -463,7 +463,7 @@ impl Qrc20Coin {
             Err(err) => {
                 return Err(FailSafeTxErr::RpcCallFailed(
                     Box::new(TransactionEnum::from(signed)),
-                    format!("{:?}", err),
+                    ERRL!("{:?}", err),
                 ));
             },
         };

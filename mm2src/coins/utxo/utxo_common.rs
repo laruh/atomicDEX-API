@@ -1165,7 +1165,7 @@ where
             Err(err) => {
                 return Err(FailSafeTxErr::RpcCallFailed(
                     Box::new(TransactionEnum::from(transaction)),
-                    format!("{:?}", err),
+                    ERRL!("{:?}", err),
                 ));
             },
         };
@@ -1229,7 +1229,7 @@ where
             Err(err) => {
                 return Err(FailSafeTxErr::RpcCallFailed(
                     Box::new(TransactionEnum::from(transaction)),
-                    format!("{:?}", err),
+                    ERRL!("{:?}", err),
                 ));
             },
         };
@@ -1295,7 +1295,7 @@ where
             Err(err) => {
                 return Err(FailSafeTxErr::RpcCallFailed(
                     Box::new(TransactionEnum::from(transaction)),
-                    format!("{:?}", err),
+                    ERRL!("{:?}", err),
                 ));
             },
         }
@@ -1358,7 +1358,7 @@ where
             Err(err) => {
                 return Err(FailSafeTxErr::RpcCallFailed(
                     Box::new(TransactionEnum::from(transaction)),
-                    format!("{:?}", err),
+                    ERRL!("{:?}", err),
                 ));
             },
         }
