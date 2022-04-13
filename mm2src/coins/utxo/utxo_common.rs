@@ -1143,8 +1143,8 @@ where
             script_pubkey,
         };
 
-        let transaction = match coin
-            .p2sh_spending_tx(
+        let transaction = try_tx_s!(
+            coin.p2sh_spending_tx(
                 prev_tx,
                 redeem_script.into(),
                 vec![output],
@@ -1154,10 +1154,7 @@ where
                 &key_pair,
             )
             .await
-        {
-            Ok(tx) => tx,
-            Err(err) => return TX_ERR!("{:?}", err),
-        };
+        );
 
         let tx_fut = coin.as_ref().rpc_client.send_transaction(&transaction).compat();
         match tx_fut.await {
@@ -1169,6 +1166,7 @@ where
                 ));
             },
         };
+
         Ok(transaction.into())
     };
     Box::new(fut.boxed().compat())
@@ -1207,8 +1205,9 @@ where
             value: prev_tx.outputs[0].value - fee,
             script_pubkey,
         };
-        let transaction = match coin
-            .p2sh_spending_tx(
+
+        let transaction = try_tx_s!(
+            coin.p2sh_spending_tx(
                 prev_tx,
                 redeem_script.into(),
                 vec![output],
@@ -1218,10 +1217,7 @@ where
                 &key_pair,
             )
             .await
-        {
-            Ok(tx) => tx,
-            Err(err) => return TX_ERR!("{:?}", err),
-        };
+        );
 
         let tx_fut = coin.as_ref().rpc_client.send_transaction(&transaction).compat();
         match tx_fut.await {
@@ -1233,6 +1229,7 @@ where
                 ));
             },
         };
+
         Ok(transaction.into())
     };
     Box::new(fut.boxed().compat())
@@ -1263,18 +1260,15 @@ where
         &try_tx_fus!(Public::from_slice(maker_pub)),
     );
     let fut = async move {
-        let fee = match coin.get_htlc_spend_fee(DEFAULT_SWAP_TX_SPEND_SIZE).await {
-            Ok(f) => f,
-            Err(err) => return TX_ERR!("{:?}", err),
-        };
-
+        let fee = try_tx_s!(coin.get_htlc_spend_fee(DEFAULT_SWAP_TX_SPEND_SIZE).await);
         let script_pubkey = output_script(&my_address, ScriptType::P2PKH).to_bytes();
         let output = TransactionOutput {
             value: prev_tx.outputs[0].value - fee,
             script_pubkey,
         };
-        let transaction = match coin
-            .p2sh_spending_tx(
+
+        let transaction = try_tx_s!(
+            coin.p2sh_spending_tx(
                 prev_tx,
                 redeem_script.into(),
                 vec![output],
@@ -1284,12 +1278,9 @@ where
                 &key_pair,
             )
             .await
-        {
-            Ok(tx) => tx,
-            Err(err) => return TX_ERR!("{:?}", err),
-        };
-        let tx_fut = coin.as_ref().rpc_client.send_transaction(&transaction).compat();
+        );
 
+        let tx_fut = coin.as_ref().rpc_client.send_transaction(&transaction).compat();
         match tx_fut.await {
             Ok(_) => (),
             Err(err) => {
@@ -1298,7 +1289,7 @@ where
                     ERRL!("{:?}", err),
                 ));
             },
-        }
+        };
 
         Ok(transaction.into())
     };
@@ -1335,8 +1326,9 @@ where
             value: prev_tx.outputs[0].value - fee,
             script_pubkey,
         };
-        let transaction = match coin
-            .p2sh_spending_tx(
+
+        let transaction = try_tx_s!(
+            coin.p2sh_spending_tx(
                 prev_tx,
                 redeem_script.into(),
                 vec![output],
@@ -1346,13 +1338,9 @@ where
                 &key_pair,
             )
             .await
-        {
-            Ok(tx) => tx,
-            Err(err) => return TX_ERR!("{:?}", err),
-        };
+        );
 
         let tx_fut = coin.as_ref().rpc_client.send_transaction(&transaction).compat();
-
         match tx_fut.await {
             Ok(_) => (),
             Err(err) => {
@@ -1361,7 +1349,7 @@ where
                     ERRL!("{:?}", err),
                 ));
             },
-        }
+        };
 
         Ok(transaction.into())
     };
