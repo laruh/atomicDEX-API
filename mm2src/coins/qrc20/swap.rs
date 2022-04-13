@@ -43,10 +43,7 @@ impl Qrc20Coin {
 
         // Check the balance to avoid unnecessary burning of gas
         if balance < value {
-            return Err(FailSafeTxErr::Error(format!(
-                "Balance {} is less than value {}",
-                balance, value
-            )));
+            return FSTX_ERR!("Balance {} is less than value {}", balance, value);
         }
 
         let outputs = try_fs_s!(
@@ -77,10 +74,7 @@ impl Qrc20Coin {
 
         let status = try_fs_s!(self.payment_status(&swap_contract_address, swap_id.clone()).await);
         if status != eth::PAYMENT_STATE_SENT.into() {
-            return Err(FailSafeTxErr::Error(format!(
-                "Payment state is not PAYMENT_STATE_SENT, got {}",
-                status
-            )));
+            return FSTX_ERR!("Payment state is not PAYMENT_STATE_SENT, got {}", status);
         }
 
         let spend_output =
@@ -103,10 +97,7 @@ impl Qrc20Coin {
 
         let status = try_fs_s!(self.payment_status(&swap_contract_address, swap_id.clone()).await);
         if status != eth::PAYMENT_STATE_SENT.into() {
-            return Err(FailSafeTxErr::Error(format!(
-                "Payment state is not PAYMENT_STATE_SENT, got {}",
-                status
-            )));
+            return FSTX_ERR!("Payment state is not PAYMENT_STATE_SENT, got {}", status);
         }
 
         let refund_output =

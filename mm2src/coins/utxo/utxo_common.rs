@@ -1156,7 +1156,7 @@ where
             .await
         {
             Ok(tx) => tx,
-            Err(err) => return Err(FailSafeTxErr::Error(format!("{:?}", err))),
+            Err(err) => return FSTX_ERR!("{:?}", err),
         };
 
         let tx_fut = coin.as_ref().rpc_client.send_transaction(&transaction).compat();
@@ -1220,7 +1220,7 @@ where
             .await
         {
             Ok(tx) => tx,
-            Err(err) => return Err(FailSafeTxErr::Error(format!("{:?}", err))),
+            Err(err) => return FSTX_ERR!("{:?}", err),
         };
 
         let tx_fut = coin.as_ref().rpc_client.send_transaction(&transaction).compat();
@@ -1265,7 +1265,7 @@ where
     let fut = async move {
         let fee = match coin.get_htlc_spend_fee(DEFAULT_SWAP_TX_SPEND_SIZE).await {
             Ok(f) => f,
-            Err(err) => return Err(FailSafeTxErr::Error(format!("{:?}", err))),
+            Err(err) => return FSTX_ERR!("{:?}", err),
         };
 
         let script_pubkey = output_script(&my_address, ScriptType::P2PKH).to_bytes();
@@ -1286,7 +1286,7 @@ where
             .await
         {
             Ok(tx) => tx,
-            Err(err) => return Err(FailSafeTxErr::Error(format!("{:?}", err))),
+            Err(err) => return FSTX_ERR!("{:?}", err),
         };
         let tx_fut = coin.as_ref().rpc_client.send_transaction(&transaction).compat();
 
@@ -1348,7 +1348,7 @@ where
             .await
         {
             Ok(tx) => tx,
-            Err(err) => return Err(FailSafeTxErr::Error(format!("{:?}", err))),
+            Err(err) => return FSTX_ERR!("{:?}", err),
         };
 
         let tx_fut = coin.as_ref().rpc_client.send_transaction(&transaction).compat();
@@ -1822,10 +1822,12 @@ pub fn wait_for_output_spend(
             };
 
             if now_ms() / 1000 > wait_until {
-                return Err(FailSafeTxErr::Error(format!(
+                return FSTX_ERR!(
                     "Waited too long until {} for transaction {:?} {} to be spent ",
-                    wait_until, tx, output_index,
-                )));
+                    wait_until,
+                    tx,
+                    output_index,
+                );
             }
             Timer::sleep(10.).await;
         }

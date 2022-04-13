@@ -97,6 +97,11 @@ macro_rules! try_fs_fus {
     };
 }
 
+macro_rules! FSTX_ERR {
+  ($format: expr, $($args: tt)+) => { Err(FailSafeTxErr::Error((ERRL!($format, $($args)+)))) };
+  ($format: expr) => { Err(FailSafeTxErr::Error(ERRL!($format))) }
+}
+
 macro_rules! try_fs_s {
     ($e: expr) => {
         match $e {

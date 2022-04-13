@@ -1284,10 +1284,11 @@ impl MarketCoinOps for EthCoin {
                 }
 
                 if now_ms() / 1000 > wait_until {
-                    return Err(FailSafeTxErr::Error(format!(
+                    return FSTX_ERR!(
                         "Waited too long until {} for transaction {:?} to be spent ",
-                        wait_until, tx
-                    )));
+                        wait_until,
+                        tx,
+                    );
                 }
                 Timer::sleep(5.).await;
                 continue;
