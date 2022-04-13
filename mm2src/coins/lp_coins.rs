@@ -88,6 +88,20 @@ macro_rules! try_fus {
     };
 }
 
+macro_rules! try_fs_fus {
+    ($e: expr) => {
+        match $e {
+            Ok(ok) => ok,
+            Err(err) => {
+                return Box::new(futures01::future::err(FailSafeTxErr::Error(format!(
+                    "{:?}",
+                    err
+                ))))
+            },
+        }
+    };
+}
+
 macro_rules! try_f {
     ($e: expr) => {
         match $e {
@@ -228,6 +242,15 @@ impl Deref for TransactionEnum {
 pub type TransactionFut = Box<dyn Future<Item = TransactionEnum, Error = String> + Send>;
 
 #[derive(Debug, PartialEq)]
+pub enum FailSafeTxErr {
+    /// Tx and Error
+    RpcCallFailed(TransactionEnum, String),
+    Error(String),
+}
+
+pub type FailSafeTxFut = Box<dyn Future<Item = TransactionEnum, Error = FailSafeTxErr> + Send>;
+
+#[derive(Debug, PartialEq)]
 pub enum FoundSwapTxSpend {
     Spent(TransactionEnum),
     Refunded(TransactionEnum),
@@ -313,7 +336,7 @@ pub trait SwapOps {
         secret_hash: &[u8],
         htlc_privkey: &[u8],
         swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut;
+    ) -> FailSafeTxFut;
 
     fn send_maker_refunds_payment(
         &self,

@@ -3,7 +3,7 @@ use crate::solana::solana_common::{lamports_to_sol, PrepareTransferData, Suffici
 use crate::solana::spl::SplTokenInfo;
 use crate::{BalanceError, BalanceFut, FeeApproxStage, FoundSwapTxSpend, NegotiateSwapContractAddrErr,
             TradePreimageFut, TradePreimageResult, TradePreimageValue, TransactionDetails, TransactionType,
-            ValidateAddressResult, ValidatePaymentInput, WithdrawError, WithdrawFut, WithdrawRequest, WithdrawResult};
+            ValidateAddressResult, ValidatePaymentInput, WithdrawError, WithdrawFut, WithdrawRequest, WithdrawResult, FailSafeTxFut};
 use async_trait::async_trait;
 use base58::ToBase58;
 use bigdecimal::BigDecimal;
@@ -484,7 +484,7 @@ impl SwapOps for SolanaCoin {
         secret_hash: &[u8],
         htlc_privkey: &[u8],
         swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut {
+    ) -> FailSafeTxFut {
         unimplemented!()
     }
 

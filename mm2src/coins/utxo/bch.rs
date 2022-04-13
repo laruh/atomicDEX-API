@@ -7,7 +7,7 @@ use crate::utxo::utxo_builder::{UtxoArcBuilder, UtxoCoinBuilder};
 use crate::utxo::utxo_common::big_decimal_from_sat_unsigned;
 use crate::{BlockHeightAndTime, CanRefundHtlc, CoinBalance, CoinProtocol, NegotiateSwapContractAddrErr,
             PrivKeyBuildPolicy, SwapOps, TradePreimageValue, TransactionType, TxFeeDetails, ValidateAddressResult,
-            ValidatePaymentInput, WithdrawFut};
+            ValidatePaymentInput, WithdrawFut, FailSafeTxFut};
 use common::log::warn;
 use common::mm_metrics::MetricsArc;
 use common::mm_number::MmNumber;
@@ -905,7 +905,7 @@ impl SwapOps for BchCoin {
         secret_hash: &[u8],
         htlc_privkey: &[u8],
         _swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut {
+    ) -> FailSafeTxFut {
         utxo_common::send_taker_refunds_payment(self.clone(), taker_tx, time_lock, maker_pub, secret_hash, htlc_privkey)
     }
 

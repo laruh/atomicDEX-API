@@ -11,11 +11,12 @@ use crate::utxo::{qtum, ActualTxFee, AdditionalTxData, BroadcastTxErr, FeePolicy
                   HistoryUtxoTxMap, RecentlySpentOutPoints, UtxoActivationParams, UtxoAddressFormat, UtxoCoinFields,
                   UtxoCommonOps, UtxoFromLegacyReqErr, UtxoTx, UtxoTxBroadcastOps, UtxoTxGenerationOps,
                   VerboseTransactionFrom, UTXO_LOCK};
-use crate::{BalanceError, BalanceFut, CoinBalance, FeeApproxStage, FoundSwapTxSpend, HistorySyncState, MarketCoinOps,
-            MmCoin, NegotiateSwapContractAddrErr, PrivKeyNotAllowed, SwapOps, TradeFee, TradePreimageError,
-            TradePreimageFut, TradePreimageResult, TradePreimageValue, TransactionDetails, TransactionEnum,
-            TransactionFut, TransactionType, UnexpectedDerivationMethod, ValidateAddressResult, ValidatePaymentInput,
-            WithdrawError, WithdrawFee, WithdrawFut, WithdrawRequest, WithdrawResult};
+use crate::{BalanceError, BalanceFut, CoinBalance, FailSafeTxFut, FeeApproxStage, FoundSwapTxSpend, HistorySyncState,
+            MarketCoinOps, MmCoin, NegotiateSwapContractAddrErr, PrivKeyNotAllowed, SwapOps, FailSafeTxErr,
+            TradeFee, TradePreimageError, TradePreimageFut, TradePreimageResult, TradePreimageValue,
+            TransactionDetails, TransactionEnum, TransactionFut, TransactionType, UnexpectedDerivationMethod,
+            ValidateAddressResult, ValidatePaymentInput, WithdrawError, WithdrawFee, WithdrawFut, WithdrawRequest,
+            WithdrawResult};
 use async_trait::async_trait;
 use bigdecimal::BigDecimal;
 use bitcrypto::{dhash160, sha256};
@@ -821,9 +822,9 @@ impl SwapOps for Qrc20Coin {
         _secret_hash: &[u8],
         _htlc_privkey: &[u8],
         swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut {
-        let payment_tx: UtxoTx = try_fus!(deserialize(taker_payment_tx).map_err(|e| ERRL!("{:?}", e)));
-        let swap_contract_address = try_fus!(swap_contract_address.try_to_address());
+    ) -> FailSafeTxFut {
+        let payment_tx: UtxoTx = try_fs_fus!(deserialize(taker_payment_tx).map_err(|e| ERRL!("{:?}", e)));
+        let swap_contract_address = try_fs_fus!(swap_contract_address.try_to_address());
 
         let selfi = self.clone();
         let fut = async move {
@@ -831,7 +832,7 @@ impl SwapOps for Qrc20Coin {
                 .refund_hash_time_locked_payment(swap_contract_address, payment_tx)
                 .await
         };
-        Box::new(fut.boxed().compat())
+        Box::new(fut.boxed().compat().map_err(|e| FailSafeTxErr::Error(e)))
     }
 
     fn send_maker_refunds_payment(

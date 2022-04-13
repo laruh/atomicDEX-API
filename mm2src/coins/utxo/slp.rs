@@ -10,11 +10,11 @@ use crate::utxo::utxo_common::{self, big_decimal_from_sat_unsigned, payment_scri
 use crate::utxo::{generate_and_send_tx, sat_from_big_decimal, ActualTxFee, AdditionalTxData, BroadcastTxErr,
                   FeePolicy, GenerateTxError, RecentlySpentOutPoints, UtxoCoinConf, UtxoCoinFields, UtxoCommonOps,
                   UtxoTx, UtxoTxBroadcastOps, UtxoTxGenerationOps};
-use crate::{BalanceFut, CoinBalance, FeeApproxStage, FoundSwapTxSpend, HistorySyncState, MarketCoinOps, MmCoin,
-            NegotiateSwapContractAddrErr, NumConversError, PrivKeyNotAllowed, SwapOps, TradeFee, TradePreimageError,
-            TradePreimageFut, TradePreimageResult, TradePreimageValue, TransactionDetails, TransactionEnum,
-            TransactionFut, TxFeeDetails, UnexpectedDerivationMethod, ValidateAddressResult, ValidatePaymentInput,
-            WithdrawError, WithdrawFee, WithdrawFut, WithdrawRequest};
+use crate::{BalanceFut, CoinBalance, FailSafeTxFut, FeeApproxStage, FoundSwapTxSpend, HistorySyncState, MarketCoinOps,
+            MmCoin, NegotiateSwapContractAddrErr, NumConversError, PrivKeyNotAllowed, SwapOps, FailSafeTxErr,
+            TradeFee, TradePreimageError, TradePreimageFut, TradePreimageResult, TradePreimageValue,
+            TransactionDetails, TransactionEnum, TransactionFut, TxFeeDetails, UnexpectedDerivationMethod,
+            ValidateAddressResult, ValidatePaymentInput, WithdrawError, WithdrawFee, WithdrawFut, WithdrawRequest};
 
 use async_trait::async_trait;
 use bitcrypto::dhash160;
@@ -1280,11 +1280,11 @@ impl SwapOps for SlpToken {
         secret_hash: &[u8],
         htlc_privkey: &[u8],
         _swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut {
+    ) -> FailSafeTxFut {
         let tx = taker_payment_tx.to_owned();
-        let maker_pub = try_fus!(Public::from_slice(maker_pub));
+        let maker_pub = try_fs_fus!(Public::from_slice(maker_pub));
         let secret_hash = secret_hash.to_owned();
-        let keypair = try_fus!(key_pair_from_secret(htlc_privkey));
+        let keypair = try_fs_fus!(key_pair_from_secret(htlc_privkey));
         let coin = self.clone();
 
         let fut = async move {
@@ -1294,7 +1294,7 @@ impl SwapOps for SlpToken {
             );
             Ok(tx.into())
         };
-        Box::new(fut.boxed().compat())
+        Box::new(fut.boxed().compat().map_err(|e| FailSafeTxErr::Error(e)))
     }
 
     fn send_maker_refunds_payment(

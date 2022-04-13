@@ -14,7 +14,7 @@ use crate::utxo::utxo_builder::{MergeUtxoArcOps, UtxoCoinBuildError, UtxoCoinBui
                                 UtxoFieldsWithHardwareWalletBuilder, UtxoFieldsWithIguanaPrivKeyBuilder};
 use crate::{eth, CanRefundHtlc, CoinBalance, CoinWithDerivationMethod, DelegationError, DelegationFut,
             GetWithdrawSenderAddress, NegotiateSwapContractAddrErr, PrivKeyBuildPolicy, StakingInfosFut, SwapOps,
-            TradePreimageValue, ValidateAddressResult, ValidatePaymentInput, WithdrawFut, WithdrawSenderAddress};
+            TradePreimageValue, ValidateAddressResult, ValidatePaymentInput, WithdrawFut, WithdrawSenderAddress, FailSafeTxFut};
 use common::mm_metrics::MetricsArc;
 use common::mm_number::MmNumber;
 use crypto::trezor::utxo::TrezorUtxoCoin;
@@ -537,7 +537,7 @@ impl SwapOps for QtumCoin {
         secret_hash: &[u8],
         htlc_privkey: &[u8],
         _swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut {
+    ) -> FailSafeTxFut {
         utxo_common::send_taker_refunds_payment(self.clone(), taker_tx, time_lock, maker_pub, secret_hash, htlc_privkey)
     }
 

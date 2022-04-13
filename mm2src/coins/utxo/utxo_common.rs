@@ -8,9 +8,9 @@ use crate::init_withdraw::WithdrawTaskHandle;
 use crate::utxo::rpc_clients::{electrum_script_hash, BlockHashOrHeight, UnspentInfo, UtxoRpcClientEnum,
                                UtxoRpcClientOps, UtxoRpcResult};
 use crate::utxo::utxo_withdraw::{InitUtxoWithdraw, StandardUtxoWithdraw, UtxoWithdraw};
-use crate::{CanRefundHtlc, CoinBalance, CoinWithDerivationMethod, GetWithdrawSenderAddress, HDAddressId,
-            TradePreimageValue, TxFeeDetails, ValidateAddressResult, ValidatePaymentInput, WithdrawFrom,
-            WithdrawResult, WithdrawSenderAddress};
+use crate::{CanRefundHtlc, CoinBalance, CoinWithDerivationMethod, FailSafeTxFut, GetWithdrawSenderAddress,
+            HDAddressId, FailSafeTxErr, TradePreimageValue, TxFeeDetails, ValidateAddressResult,
+            ValidatePaymentInput, WithdrawFrom, WithdrawResult, WithdrawSenderAddress};
 use bigdecimal::{BigDecimal, Zero};
 pub use bitcrypto::{dhash160, sha256, ChecksumType};
 use chain::constants::SEQUENCE_FINAL;
@@ -1219,31 +1219,36 @@ pub fn send_taker_refunds_payment<T>(
     maker_pub: &[u8],
     secret_hash: &[u8],
     htlc_privkey: &[u8],
-) -> TransactionFut
+) -> FailSafeTxFut
 where
     T: AsRef<UtxoCoinFields> + UtxoCommonOps + Send + Sync + 'static,
 {
-    let key_pair = try_fus!(key_pair_from_secret(htlc_privkey));
-    let my_address = try_fus!(coin.as_ref().derivation_method.iguana_or_err()).clone();
+    let key_pair = try_fs_fus!(key_pair_from_secret(htlc_privkey));
+    let my_address = try_fs_fus!(coin.as_ref().derivation_method.iguana_or_err()).clone();
 
-    let mut prev_tx: UtxoTx = try_fus!(deserialize(taker_payment_tx).map_err(|e| ERRL!("{:?}", e)));
+    let mut prev_tx: UtxoTx =
+        try_fs_fus!(deserialize(taker_payment_tx).map_err(|e| FailSafeTxErr::Error(format!("{:?}", e))));
     prev_tx.tx_hash_algo = coin.as_ref().tx_hash_algo;
     let script_data = Builder::default().push_opcode(Opcode::OP_1).into_script();
     let redeem_script = payment_script(
         time_lock,
         secret_hash,
         key_pair.public(),
-        &try_fus!(Public::from_slice(maker_pub)),
+        &try_fs_fus!(Public::from_slice(maker_pub)),
     );
     let fut = async move {
-        let fee = try_s!(coin.get_htlc_spend_fee(DEFAULT_SWAP_TX_SPEND_SIZE).await);
+        let fee = match coin.get_htlc_spend_fee(DEFAULT_SWAP_TX_SPEND_SIZE).await {
+            Ok(f) => f,
+            Err(err) => return Err(FailSafeTxErr::Error(format!("{:?}", err))),
+        };
+
         let script_pubkey = output_script(&my_address, ScriptType::P2PKH).to_bytes();
         let output = TransactionOutput {
             value: prev_tx.outputs[0].value - fee,
             script_pubkey,
         };
-        let transaction = try_s!(
-            coin.p2sh_spending_tx(
+        let transaction = match coin
+            .p2sh_spending_tx(
                 prev_tx,
                 redeem_script.into(),
                 vec![output],
@@ -1253,9 +1258,22 @@ where
                 &key_pair,
             )
             .await
-        );
+        {
+            Ok(tx) => tx,
+            Err(err) => return Err(FailSafeTxErr::Error(format!("{:?}", err))),
+        };
         let tx_fut = coin.as_ref().rpc_client.send_transaction(&transaction).compat();
-        try_s!(tx_fut.await);
+
+        match tx_fut.await {
+            Ok(_) => (),
+            Err(err) => {
+                return Err(FailSafeTxErr::RpcCallFailed(
+                    TransactionEnum::from(transaction),
+                    format!("{:?}", err),
+                ));
+            },
+        }
+
         Ok(transaction.into())
     };
     Box::new(fut.boxed().compat())

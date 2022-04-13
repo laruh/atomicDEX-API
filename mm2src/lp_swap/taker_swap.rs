@@ -13,8 +13,8 @@ use crate::mm2::lp_ordermatch::{MatchBy, OrderConfirmationsSettings, TakerAction
 use crate::mm2::lp_swap::{broadcast_p2p_tx_helper, tx_helper_topic};
 use crate::mm2::MM_VERSION;
 use bigdecimal::BigDecimal;
-use coins::{lp_coinfind, CanRefundHtlc, FeeApproxStage, FoundSwapTxSpend, MmCoinEnum, TradeFee, TradePreimageValue,
-            ValidatePaymentInput};
+use coins::{lp_coinfind, CanRefundHtlc, FeeApproxStage, FoundSwapTxSpend, MmCoinEnum, FailSafeTxErr, TradeFee,
+            TradePreimageValue, ValidatePaymentInput};
 use common::executor::Timer;
 use common::log::{debug, error, warn};
 use common::mm_ctx::MmArc;
@@ -1331,10 +1331,24 @@ impl TakerSwap {
 
         let transaction = match refund_fut.compat().await {
             Ok(t) => t,
-            Err(err) => {
-                return Ok((Some(TakerSwapCommand::Finish), vec![
-                    TakerSwapEvent::TakerPaymentRefundFailed(ERRL!("{}", err).into()),
-                ]))
+            Err(err_enum) => match err_enum {
+                FailSafeTxErr::RpcCallFailed(tx, err) => {
+                    broadcast_p2p_tx_helper(
+                        &self.ctx,
+                        tx_helper_topic(self.taker_coin.ticker()),
+                        tx.tx_hex(),
+                        &self.p2p_privkey,
+                    );
+
+                    return Ok((Some(TakerSwapCommand::Finish), vec![
+                        TakerSwapEvent::TakerPaymentRefundFailed(ERRL!("{:?}", err).into()),
+                    ]));
+                },
+                FailSafeTxErr::Error(err) => {
+                    return Ok((Some(TakerSwapCommand::Finish), vec![
+                        TakerSwapEvent::TakerPaymentRefundFailed(ERRL!("{:?}", err).into()),
+                    ]));
+                },
             },
         };
 
@@ -1604,19 +1618,31 @@ impl TakerSwap {
                     );
                 }
 
-                let transaction = try_s!(
-                    self.taker_coin
-                        .send_taker_refunds_payment(
-                            &taker_payment,
-                            taker_payment_lock as u32,
-                            other_taker_coin_htlc_pub.as_slice(),
-                            &secret_hash,
-                            taker_coin_htlc_keypair.private().secret.as_slice(),
-                            &taker_coin_swap_contract_address,
-                        )
-                        .compat()
-                        .await
+                let fut = self.taker_coin.send_taker_refunds_payment(
+                    &taker_payment,
+                    taker_payment_lock as u32,
+                    other_taker_coin_htlc_pub.as_slice(),
+                    &secret_hash,
+                    taker_coin_htlc_keypair.private().secret.as_slice(),
+                    &taker_coin_swap_contract_address,
                 );
+
+                let transaction = match fut.compat().await {
+                    Ok(t) => t,
+                    Err(err_enum) => match err_enum {
+                        FailSafeTxErr::RpcCallFailed(tx, err) => {
+                            broadcast_p2p_tx_helper(
+                                &self.ctx,
+                                tx_helper_topic(self.taker_coin.ticker()),
+                                tx.tx_hex(),
+                                &self.p2p_privkey,
+                            );
+
+                            return ERR!("{:?}", err);
+                        },
+                        FailSafeTxErr::Error(err) => return ERR!("{:?}", err),
+                    },
+                };
 
                 Ok(RecoveredSwap {
                     action: RecoveredSwapAction::RefundedMyPayment,

@@ -5,7 +5,7 @@ use crate::utxo::{sat_from_big_decimal, BlockchainNetwork, FeePolicy, UtxoCommon
 use crate::{BalanceFut, CoinBalance, FeeApproxStage, FoundSwapTxSpend, HistorySyncState, MarketCoinOps, MmCoin,
             NegotiateSwapContractAddrErr, SwapOps, TradeFee, TradePreimageFut, TradePreimageResult,
             TradePreimageValue, TransactionEnum, TransactionFut, UtxoStandardCoin, ValidateAddressResult,
-            ValidatePaymentInput, WithdrawError, WithdrawFut, WithdrawRequest};
+            ValidatePaymentInput, WithdrawError, WithdrawFut, WithdrawRequest, FailSafeTxFut};
 use async_trait::async_trait;
 use bigdecimal::BigDecimal;
 use bitcoin::blockdata::script::Script;
@@ -278,7 +278,7 @@ impl SwapOps for LightningCoin {
         _secret_hash: &[u8],
         _htlc_privkey: &[u8],
         _swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut {
+    ) -> FailSafeTxFut {
         unimplemented!()
     }
 

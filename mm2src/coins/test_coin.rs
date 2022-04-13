@@ -1,7 +1,7 @@
 use super::{CoinBalance, HistorySyncState, MarketCoinOps, MmCoin, SwapOps, TradeFee, TransactionEnum, TransactionFut};
 use crate::{BalanceFut, FeeApproxStage, FoundSwapTxSpend, NegotiateSwapContractAddrErr, TradePreimageFut,
             TradePreimageResult, TradePreimageValue, ValidateAddressResult, ValidatePaymentInput, WithdrawFut,
-            WithdrawRequest};
+            WithdrawRequest, FailSafeTxFut};
 use async_trait::async_trait;
 use bigdecimal::BigDecimal;
 use common::mm_ctx::MmArc;
@@ -140,7 +140,7 @@ impl SwapOps for TestCoin {
         secret_hash: &[u8],
         htlc_privkey: &[u8],
         swap_contract_address: &Option<BytesJson>,
-    ) -> TransactionFut {
+    ) -> FailSafeTxFut {
         unimplemented!()
     }
 
