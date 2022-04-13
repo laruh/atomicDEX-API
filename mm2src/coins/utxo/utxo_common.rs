@@ -1754,6 +1754,7 @@ where
     Box::new(fut.boxed().compat())
 }
 
+/// Receives raw transaction bytes as input and returns tx hash in hexadecimal format
 pub fn send_raw_tx<T: AsRef<[u8]>>(
     coin: &UtxoCoinFields,
     tx: T,
