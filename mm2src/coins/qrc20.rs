@@ -11,10 +11,10 @@ use crate::utxo::{qtum, ActualTxFee, AdditionalTxData, BroadcastTxErr, FeePolicy
                   HistoryUtxoTxMap, RecentlySpentOutPoints, UtxoActivationParams, UtxoAddressFormat, UtxoCoinFields,
                   UtxoCommonOps, UtxoFromLegacyReqErr, UtxoTx, UtxoTxBroadcastOps, UtxoTxGenerationOps,
                   VerboseTransactionFrom, UTXO_LOCK};
-use crate::{BalanceError, BalanceFut, CoinBalance, FailSafeTxErr, FeeApproxStage, FoundSwapTxSpend, HistorySyncState,
-            MarketCoinOps, MmCoin, NegotiateSwapContractAddrErr, PrivKeyNotAllowed, SwapOps, TradeFee,
-            TradePreimageError, TradePreimageFut, TradePreimageResult, TradePreimageValue, TransactionDetails,
-            TransactionEnum, TransactionFut, TransactionType, UnexpectedDerivationMethod, ValidateAddressResult,
+use crate::{BalanceError, BalanceFut, CoinBalance, FeeApproxStage, FoundSwapTxSpend, HistorySyncState, MarketCoinOps,
+            MmCoin, NegotiateSwapContractAddrErr, PrivKeyNotAllowed, SwapOps, TradeFee, TradePreimageError,
+            TradePreimageFut, TradePreimageResult, TradePreimageValue, TransactionDetails, TransactionEnum,
+            TransactionErr, TransactionFut, TransactionType, UnexpectedDerivationMethod, ValidateAddressResult,
             ValidatePaymentInput, WithdrawError, WithdrawFee, WithdrawFut, WithdrawRequest, WithdrawResult};
 use async_trait::async_trait;
 use bigdecimal::BigDecimal;
@@ -446,7 +446,7 @@ impl Qrc20Coin {
     pub async fn send_contract_calls(
         &self,
         outputs: Vec<ContractCallOutput>,
-    ) -> Result<TransactionEnum, FailSafeTxErr> {
+    ) -> Result<TransactionEnum, TransactionErr> {
         // TODO: we need to somehow refactor it using RecentlySpentOutpoints cache
         // Move over all QRC20 tokens should share the same cache with each other and base QTUM coin
         let _utxo_lock = UTXO_LOCK.lock().await;
@@ -457,11 +457,11 @@ impl Qrc20Coin {
             .generate_qrc20_transaction(outputs)
             .await
             .mm_err(|e| e.into_withdraw_error(platform, decimals))
-            .map_err(|e| FailSafeTxErr::Error(ERRL!("{}", e)))?;
+            .map_err(|e| TransactionErr::PlainError(ERRL!("{}", e)))?;
         let _tx = match self.utxo.rpc_client.send_transaction(&signed).compat().await {
             Ok(tx) => tx,
             Err(err) => {
-                return Err(FailSafeTxErr::RpcCallFailed(
+                return Err(TransactionErr::TxRecoverableError(
                     Box::new(TransactionEnum::from(signed)),
                     ERRL!("{:?}", err),
                 ));
@@ -720,10 +720,10 @@ impl UtxoCommonOps for Qrc20Coin {
 #[async_trait]
 impl SwapOps for Qrc20Coin {
     fn send_taker_fee(&self, fee_addr: &[u8], amount: BigDecimal, _uuid: &[u8]) -> TransactionFut {
-        let to_address = try_fstx_fus!(self.contract_address_from_raw_pubkey(fee_addr));
-        let amount = try_fstx_fus!(wei_from_big_decimal(&amount, self.utxo.decimals));
+        let to_address = try_tx_fus!(self.contract_address_from_raw_pubkey(fee_addr));
+        let amount = try_tx_fus!(wei_from_big_decimal(&amount, self.utxo.decimals));
         let transfer_output =
-            try_fstx_fus!(self.transfer_output(to_address, amount, QRC20_GAS_LIMIT_DEFAULT, QRC20_GAS_PRICE_DEFAULT));
+            try_tx_fus!(self.transfer_output(to_address, amount, QRC20_GAS_LIMIT_DEFAULT, QRC20_GAS_PRICE_DEFAULT));
         let outputs = vec![transfer_output];
 
         let selfi = self.clone();
@@ -741,11 +741,11 @@ impl SwapOps for Qrc20Coin {
         amount: BigDecimal,
         swap_contract_address: &Option<BytesJson>,
     ) -> TransactionFut {
-        let taker_addr = try_fstx_fus!(self.contract_address_from_raw_pubkey(taker_pub));
+        let taker_addr = try_tx_fus!(self.contract_address_from_raw_pubkey(taker_pub));
         let id = qrc20_swap_id(time_lock, secret_hash);
-        let value = try_fstx_fus!(wei_from_big_decimal(&amount, self.utxo.decimals));
+        let value = try_tx_fus!(wei_from_big_decimal(&amount, self.utxo.decimals));
         let secret_hash = Vec::from(secret_hash);
-        let swap_contract_address = try_fstx_fus!(swap_contract_address.try_to_address());
+        let swap_contract_address = try_tx_fus!(swap_contract_address.try_to_address());
 
         let selfi = self.clone();
         let fut = async move {
@@ -765,11 +765,11 @@ impl SwapOps for Qrc20Coin {
         amount: BigDecimal,
         swap_contract_address: &Option<BytesJson>,
     ) -> TransactionFut {
-        let maker_addr = try_fstx_fus!(self.contract_address_from_raw_pubkey(maker_pub));
+        let maker_addr = try_tx_fus!(self.contract_address_from_raw_pubkey(maker_pub));
         let id = qrc20_swap_id(time_lock, secret_hash);
-        let value = try_fstx_fus!(wei_from_big_decimal(&amount, self.utxo.decimals));
+        let value = try_tx_fus!(wei_from_big_decimal(&amount, self.utxo.decimals));
         let secret_hash = Vec::from(secret_hash);
-        let swap_contract_address = try_fstx_fus!(swap_contract_address.try_to_address());
+        let swap_contract_address = try_tx_fus!(swap_contract_address.try_to_address());
 
         let selfi = self.clone();
         let fut = async move {
@@ -789,8 +789,8 @@ impl SwapOps for Qrc20Coin {
         _htlc_privkey: &[u8],
         swap_contract_address: &Option<BytesJson>,
     ) -> TransactionFut {
-        let payment_tx: UtxoTx = try_fstx_fus!(deserialize(taker_payment_tx).map_err(|e| ERRL!("{:?}", e)));
-        let swap_contract_address = try_fstx_fus!(swap_contract_address.try_to_address());
+        let payment_tx: UtxoTx = try_tx_fus!(deserialize(taker_payment_tx).map_err(|e| ERRL!("{:?}", e)));
+        let swap_contract_address = try_tx_fus!(swap_contract_address.try_to_address());
         let secret = secret.to_vec();
 
         let selfi = self.clone();
@@ -811,9 +811,9 @@ impl SwapOps for Qrc20Coin {
         _htlc_privkey: &[u8],
         swap_contract_address: &Option<BytesJson>,
     ) -> TransactionFut {
-        let payment_tx: UtxoTx = try_fstx_fus!(deserialize(maker_payment_tx).map_err(|e| ERRL!("{:?}", e)));
+        let payment_tx: UtxoTx = try_tx_fus!(deserialize(maker_payment_tx).map_err(|e| ERRL!("{:?}", e)));
         let secret = secret.to_vec();
-        let swap_contract_address = try_fstx_fus!(swap_contract_address.try_to_address());
+        let swap_contract_address = try_tx_fus!(swap_contract_address.try_to_address());
 
         let selfi = self.clone();
         let fut = async move {
@@ -833,8 +833,8 @@ impl SwapOps for Qrc20Coin {
         _htlc_privkey: &[u8],
         swap_contract_address: &Option<BytesJson>,
     ) -> TransactionFut {
-        let payment_tx: UtxoTx = try_fstx_fus!(deserialize(taker_payment_tx).map_err(|e| ERRL!("{:?}", e)));
-        let swap_contract_address = try_fstx_fus!(swap_contract_address.try_to_address());
+        let payment_tx: UtxoTx = try_tx_fus!(deserialize(taker_payment_tx).map_err(|e| ERRL!("{:?}", e)));
+        let swap_contract_address = try_tx_fus!(swap_contract_address.try_to_address());
 
         let selfi = self.clone();
         let fut = async move {
@@ -854,8 +854,8 @@ impl SwapOps for Qrc20Coin {
         _htlc_privkey: &[u8],
         swap_contract_address: &Option<BytesJson>,
     ) -> TransactionFut {
-        let payment_tx: UtxoTx = try_fstx_fus!(deserialize(maker_payment_tx).map_err(|e| ERRL!("{:?}", e)));
-        let swap_contract_address = try_fstx_fus!(swap_contract_address.try_to_address());
+        let payment_tx: UtxoTx = try_tx_fus!(deserialize(maker_payment_tx).map_err(|e| ERRL!("{:?}", e)));
+        let swap_contract_address = try_tx_fus!(swap_contract_address.try_to_address());
 
         let selfi = self.clone();
         let fut = async move {
@@ -1099,13 +1099,13 @@ impl MarketCoinOps for Qrc20Coin {
         from_block: u64,
         _swap_contract_address: &Option<BytesJson>,
     ) -> TransactionFut {
-        let tx: UtxoTx = try_fstx_fus!(deserialize(transaction).map_err(|e| ERRL!("{:?}", e)));
+        let tx: UtxoTx = try_tx_fus!(deserialize(transaction).map_err(|e| ERRL!("{:?}", e)));
 
         let selfi = self.clone();
         let fut = async move {
             selfi
                 .wait_for_tx_spend_impl(tx, wait_until, from_block)
-                .map_err(FailSafeTxErr::Error)
+                .map_err(TransactionErr::PlainError)
                 .await
         };
         Box::new(fut.boxed().compat())

@@ -88,29 +88,6 @@ macro_rules! try_fus {
     };
 }
 
-macro_rules! try_fstx_fus {
-    ($e: expr) => {
-        match $e {
-            Ok(ok) => ok,
-            Err(err) => return Box::new(futures01::future::err(FailSafeTxErr::Error(ERRL!("{:?}", err)))),
-        }
-    };
-}
-
-macro_rules! FSTX_ERR {
-    ($format: expr, $($args: tt)+) => { Err(FailSafeTxErr::Error((ERRL!($format, $($args)+)))) };
-    ($format: expr) => { Err(FailSafeTxErr::Error(ERRL!($format))) }
-}
-
-macro_rules! try_fstx_s {
-    ($e: expr) => {
-        match $e {
-            Ok(ok) => ok,
-            Err(err) => return Err(FailSafeTxErr::Error(format!("{}:{}] {:?}", file!(), line!(), err))),
-        }
-    };
-}
-
 macro_rules! try_f {
     ($e: expr) => {
         match $e {
@@ -118,6 +95,39 @@ macro_rules! try_f {
             Err(e) => return Box::new(futures01::future::err(e)),
         }
     };
+}
+
+/// `TransactionErr:PlainError` compatible `try_fus` macro.
+macro_rules! try_tx_fus {
+    ($e: expr) => {
+        match $e {
+            Ok(ok) => ok,
+            Err(err) => return Box::new(futures01::future::err(TransactionErr::PlainError(ERRL!("{:?}", err)))),
+        }
+    };
+}
+
+/// `TransactionErr:PlainError` compatible `try_s` macro.
+macro_rules! try_tx_s {
+    ($e: expr) => {
+        match $e {
+            Ok(ok) => ok,
+            Err(err) => {
+                return Err(TransactionErr::PlainError(format!(
+                    "{}:{}] {:?}",
+                    file!(),
+                    line!(),
+                    err
+                )))
+            },
+        }
+    };
+}
+
+/// `TransactionErr:PlainError` compatible `ERR` macro.
+macro_rules! TX_ERR {
+    ($format: expr, $($args: tt)+) => { Err(TransactionErr::PlainError((ERRL!($format, $($args)+)))) };
+    ($format: expr) => { Err(TransactionErr::PlainError(ERRL!($format))) }
 }
 
 pub mod coin_balance;
@@ -249,13 +259,14 @@ impl Deref for TransactionEnum {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum FailSafeTxErr {
-    /// Tx and Error
-    RpcCallFailed(Box<TransactionEnum>, String),
-    Error(String),
+pub enum TransactionErr {
+    /// Keeps transactions while throwing errors.
+    TxRecoverableError(Box<TransactionEnum>, String),
+    /// Simply for plain error messages.
+    PlainError(String),
 }
 
-pub type TransactionFut = Box<dyn Future<Item = TransactionEnum, Error = FailSafeTxErr> + Send>;
+pub type TransactionFut = Box<dyn Future<Item = TransactionEnum, Error = TransactionErr> + Send>;
 
 #[derive(Debug, PartialEq)]
 pub enum FoundSwapTxSpend {
