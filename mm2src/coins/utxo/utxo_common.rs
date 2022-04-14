@@ -2931,7 +2931,7 @@ pub async fn cache_transactions_if_possible(coin: &UtxoCoinFields, txs: &HashMap
 /// Save the given `txs` transactions in a TX cache.
 /// It takes `txs` as the Hash map to avoid duplicating same transactions.
 #[cfg(target_arch = "wasm32")]
-pub async fn cache_transactions_if_possible(coin: &UtxoCoinFields, txs: &HashMap<H256Json, RpcTransaction>) { Ok(()) }
+pub async fn cache_transactions_if_possible(_coin: &UtxoCoinFields, _txs: &HashMap<H256Json, RpcTransaction>) {}
 
 /// Swap contract address is not used by standard UTXO coins.
 pub fn swap_contract_address() -> Option<BytesJson> { None }
