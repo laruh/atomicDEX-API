@@ -1,8 +1,10 @@
 use super::*;
-use crate::coin_balance::{AccountBalanceParams, CheckHDAccountBalanceParams, CheckHDAccountBalanceResponse,
-                          HDAccountBalanceResponse, HDAddressBalance, HDWalletBalanceRpcOps};
+use crate::coin_balance::HDAddressBalance;
 use crate::hd_wallet::HDAccountsMap;
 use crate::hd_wallet_storage::{HDWalletMockStorage, HDWalletStorageInternalOps};
+use crate::rpc_command::account_balance::{AccountBalanceParams, AccountBalanceRpcOps, HDAccountBalanceResponse};
+use crate::rpc_command::init_scan_for_new_addresses::{InitScanAddressesRpcOps, ScanAddressesParams,
+                                                      ScanAddressesResponse};
 use crate::utxo::qtum::{qtum_coin_with_priv_key, QtumCoin, QtumDelegationOps, QtumDelegationRequest};
 use crate::utxo::rpc_clients::{BlockHashOrHeight, ElectrumBalance, ElectrumClient, ElectrumClientImpl,
                                GetAddressInfoRes, ListSinceBlockRes, ListTransactionsItem, NativeClient,
@@ -3705,12 +3707,12 @@ fn test_scan_for_new_addresses() {
         NEW_INTERNAL_ADDRESSES_NUMBER = 4;
     }
 
-    let params = CheckHDAccountBalanceParams {
+    let params = ScanAddressesParams {
         account_index: 0,
         gap_limit: Some(3),
     };
-    let actual = block_on(coin.scan_for_new_addresses_rpc(params)).expect("!account_balance_rpc");
-    let expected = CheckHDAccountBalanceResponse {
+    let actual = block_on(coin.init_scan_for_new_addresses_rpc(params)).expect("!account_balance_rpc");
+    let expected = ScanAddressesResponse {
         account_index: 0,
         derivation_path: DerivationPath::from_str("m/44'/141'/0'").unwrap().into(),
         new_addresses: get_balances!(
@@ -3730,12 +3732,12 @@ fn test_scan_for_new_addresses() {
         NEW_INTERNAL_ADDRESSES_NUMBER = 2;
     }
 
-    let params = CheckHDAccountBalanceParams {
+    let params = ScanAddressesParams {
         account_index: 1,
         gap_limit: None,
     };
-    let actual = block_on(coin.scan_for_new_addresses_rpc(params)).expect("!account_balance_rpc");
-    let expected = CheckHDAccountBalanceResponse {
+    let actual = block_on(coin.init_scan_for_new_addresses_rpc(params)).expect("!account_balance_rpc");
+    let expected = ScanAddressesResponse {
         account_index: 1,
         derivation_path: DerivationPath::from_str("m/44'/141'/1'").unwrap().into(),
         new_addresses: get_balances!(

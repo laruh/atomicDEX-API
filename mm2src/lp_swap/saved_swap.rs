@@ -225,7 +225,7 @@ mod native_impl {
 
         async fn save_to_db(&self, ctx: &MmArc) -> SavedSwapResult<()> {
             let path = my_swap_file_path(ctx, self.uuid());
-            write_json(self, &path,USE_TMP_FILE).await?;
+            write_json(self, &path, USE_TMP_FILE).await?;
             Ok(())
         }
 
@@ -234,11 +234,11 @@ mod native_impl {
             match self {
                 SavedSwap::Maker(maker) => {
                     let path = stats_maker_swap_file_path(ctx, &maker.uuid);
-                    write_json(self, &path,USE_TMP_FILE).await?;
+                    write_json(self, &path, USE_TMP_FILE).await?;
                 },
                 SavedSwap::Taker(taker) => {
                     let path = stats_taker_swap_file_path(ctx, &taker.uuid);
-                    write_json(self, &path,USE_TMP_FILE).await?;
+                    write_json(self, &path, USE_TMP_FILE).await?;
                 },
             }
             Ok(())

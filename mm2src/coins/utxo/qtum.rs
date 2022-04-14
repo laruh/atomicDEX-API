@@ -1,15 +1,17 @@
 use super::*;
-use crate::coin_balance::{self, AccountBalanceParams, CheckHDAccountBalanceParams, CheckHDAccountBalanceResponse,
-                          EnableCoinBalanceError, HDAccountBalance, HDAccountBalanceResponse,
-                          HDAccountBalanceRpcError, HDAddressBalance, HDWalletBalance, HDWalletBalanceOps,
-                          HDWalletBalanceRpcOps};
+use crate::coin_balance::{self, EnableCoinBalanceError, HDAccountBalance, HDAddressBalance, HDWalletBalance,
+                          HDWalletBalanceOps};
 use crate::hd_pubkey::{ExtractExtendedPubkey, HDExtractPubkeyError, HDXPubExtractor};
 use crate::hd_wallet::{self, AccountUpdatingError, AddressDerivingError, GetNewHDAddressParams,
                        GetNewHDAddressResponse, HDAccountMut, HDWalletRpcError, HDWalletRpcOps,
                        NewAccountCreatingError};
 use crate::hd_wallet_storage::HDWalletCoinWithStorageOps;
-use crate::init_create_account::{self, CreateNewAccountParams, InitCreateHDAccountRpcOps};
-use crate::init_withdraw::{InitWithdrawCoin, WithdrawTaskHandle};
+use crate::rpc_command::account_balance::{self, AccountBalanceParams, AccountBalanceRpcOps, HDAccountBalanceResponse};
+use crate::rpc_command::hd_account_balance_rpc_error::HDAccountBalanceRpcError;
+use crate::rpc_command::init_create_account::{self, CreateNewAccountParams, InitCreateHDAccountRpcOps};
+use crate::rpc_command::init_scan_for_new_addresses::{self, InitScanAddressesRpcOps, ScanAddressesParams,
+                                                      ScanAddressesResponse};
+use crate::rpc_command::init_withdraw::{InitWithdrawCoin, WithdrawTaskHandle};
 use crate::utxo::utxo_builder::{MergeUtxoArcOps, UtxoCoinBuildError, UtxoCoinBuilder, UtxoCoinBuilderCommonOps,
                                 UtxoFieldsWithHardwareWalletBuilder, UtxoFieldsWithIguanaPrivKeyBuilder};
 use crate::{eth, CanRefundHtlc, CoinBalance, CoinWithDerivationMethod, DelegationError, DelegationFut,
@@ -981,19 +983,22 @@ impl HDWalletRpcOps for QtumCoin {
 }
 
 #[async_trait]
-impl HDWalletBalanceRpcOps for QtumCoin {
+impl AccountBalanceRpcOps for QtumCoin {
     async fn account_balance_rpc(
         &self,
         params: AccountBalanceParams,
     ) -> MmResult<HDAccountBalanceResponse, HDAccountBalanceRpcError> {
-        coin_balance::common_impl::account_balance_rpc(self, params).await
+        account_balance::common_impl::account_balance_rpc(self, params).await
     }
+}
 
-    async fn scan_for_new_addresses_rpc(
+#[async_trait]
+impl InitScanAddressesRpcOps for QtumCoin {
+    async fn init_scan_for_new_addresses_rpc(
         &self,
-        params: CheckHDAccountBalanceParams,
-    ) -> MmResult<CheckHDAccountBalanceResponse, HDAccountBalanceRpcError> {
-        coin_balance::common_impl::scan_for_new_addresses_rpc(self, params).await
+        params: ScanAddressesParams,
+    ) -> MmResult<ScanAddressesResponse, HDAccountBalanceRpcError> {
+        init_scan_for_new_addresses::common_impl::scan_for_new_addresses_rpc(self, params).await
     }
 }
 
