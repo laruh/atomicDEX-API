@@ -9,7 +9,7 @@ use crate::utxo::{sat_from_big_decimal, utxo_common, ActualTxFee, AdditionalTxDa
                   UtxoTxGenerationOps, UtxoWeak, VerboseTransactionFrom};
 use crate::{BalanceFut, CoinBalance, FeeApproxStage, FoundSwapTxSpend, HistorySyncState, MarketCoinOps, MmCoin,
             NegotiateSwapContractAddrErr, NumConversError, SwapOps, TradeFee, TradePreimageFut, TradePreimageResult,
-            TradePreimageValue, TransactionDetails, TransactionEnum, TransactionErr, TransactionFut, TxFeeDetails,
+            TradePreimageValue, TransactionDetails, TransactionEnum, TransactionFut, TxFeeDetails,
             UnexpectedDerivationMethod, ValidateAddressResult, ValidatePaymentInput, WithdrawFut, WithdrawRequest};
 use crate::{Transaction, WithdrawError};
 use async_trait::async_trait;

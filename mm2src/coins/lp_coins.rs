@@ -102,7 +102,11 @@ macro_rules! try_tx_fus {
     ($e: expr) => {
         match $e {
             Ok(ok) => ok,
-            Err(err) => return Box::new(futures01::future::err(TransactionErr::PlainError(ERRL!("{:?}", err)))),
+            Err(err) => {
+                return Box::new(futures01::future::err(crate::TransactionErr::PlainError(ERRL!(
+                    "{:?}", err
+                ))))
+            },
         }
     };
 }
@@ -113,7 +117,7 @@ macro_rules! try_tx_s {
         match $e {
             Ok(ok) => ok,
             Err(err) => {
-                return Err(TransactionErr::PlainError(format!(
+                return Err(crate::TransactionErr::PlainError(format!(
                     "{}:{}] {:?}",
                     file!(),
                     line!(),
@@ -126,8 +130,8 @@ macro_rules! try_tx_s {
 
 /// `TransactionErr:PlainError` compatible `ERR` macro.
 macro_rules! TX_ERR {
-    ($format: expr, $($args: tt)+) => { Err(TransactionErr::PlainError((ERRL!($format, $($args)+)))) };
-    ($format: expr) => { Err(TransactionErr::PlainError(ERRL!($format))) }
+    ($format: expr, $($args: tt)+) => { Err(crate::TransactionErr::PlainError((ERRL!($format, $($args)+)))) };
+    ($format: expr) => { Err(crate::TransactionErr::PlainError(ERRL!($format))) }
 }
 
 pub mod coin_balance;
