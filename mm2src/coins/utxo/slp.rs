@@ -11,10 +11,11 @@ use crate::utxo::{generate_and_send_tx, sat_from_big_decimal, ActualTxFee, Addit
                   FeePolicy, GenerateTxError, RecentlySpentOutPoints, UtxoCoinConf, UtxoCoinFields, UtxoCommonOps,
                   UtxoTx, UtxoTxBroadcastOps, UtxoTxGenerationOps};
 use crate::{BalanceFut, CoinBalance, FeeApproxStage, FoundSwapTxSpend, HistorySyncState, MarketCoinOps, MmCoin,
-            NegotiateSwapContractAddrErr, NumConversError, PrivKeyNotAllowed, SwapOps, TradeFee, TradePreimageError,
-            TradePreimageFut, TradePreimageResult, TradePreimageValue, TransactionDetails, TransactionEnum,
-            TransactionErr, TransactionFut, TxFeeDetails, UnexpectedDerivationMethod, ValidateAddressResult,
-            ValidatePaymentInput, WithdrawError, WithdrawFee, WithdrawFut, WithdrawRequest};
+            NegotiateSwapContractAddrErr, NumConversError, PrivKeyNotAllowed, RawTransactionFut,
+            RawTransactionRequest, SwapOps, TradeFee, TradePreimageError, TradePreimageFut, TradePreimageResult,
+            TradePreimageValue, TransactionDetails, TransactionEnum, TransactionErr, TransactionFut, TxFeeDetails,
+            UnexpectedDerivationMethod, ValidateAddressResult, ValidatePaymentInput, WithdrawError, WithdrawFee,
+            WithdrawFut, WithdrawRequest};
 
 use async_trait::async_trait;
 use bitcrypto::dhash160;
@@ -1501,6 +1502,14 @@ impl From<SlpFeeDetails> for TxFeeDetails {
 impl MmCoin for SlpToken {
     fn is_asset_chain(&self) -> bool { false }
 
+    fn get_raw_transaction(&self, req: RawTransactionRequest) -> RawTransactionFut {
+        Box::new(
+            utxo_common::get_raw_transaction(self.platform_coin.as_ref(), req)
+                .boxed()
+                .compat(),
+        )
+    }
+
     fn withdraw(&self, req: WithdrawRequest) -> WithdrawFut {
         let coin = self.clone();
         let fut = async move {
@@ -1785,7 +1794,7 @@ pub fn slp_addr_from_pubkey_str(pubkey: &str, prefix: &str) -> Result<String, Mm
 #[cfg(test)]
 mod slp_tests {
     use super::*;
-    use crate::utxo::bch::tbch_coin_for_test;
+    use crate::{utxo::bch::tbch_coin_for_test, TransactionErr};
     use common::block_on;
 
     // https://slp.dev/specs/slp-token-type-1/#examples
