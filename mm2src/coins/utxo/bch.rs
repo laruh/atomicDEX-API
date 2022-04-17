@@ -326,7 +326,7 @@ impl BchCoin {
         addresses: Vec<Address>,
     ) -> UtxoRpcResult<(BchUnspentsMap, RecentlySpentOutPointsGuard<'_>)> {
         let (all_unspents, recently_spent) = utxo_common::get_unspent_ordered_map(self, addresses).await?;
-        // Get an iterator of futures: `Iterator<Item=Future<Item=(Address, BchUnspents)>>`
+        // Get an iterator of futures: `Future<Output=UtxoRpcResult<(Address, BchUnspents)>>`
         let fut_it = all_unspents.into_iter().map(|(address, unspents)| {
             self.utxos_into_bch_unspents(unspents)
                 .map(move |res| -> UtxoRpcResult<_> {
@@ -756,10 +756,10 @@ impl ListUtxoOps for BchCoin {
         Ok((unspents, recently_spent))
     }
 
-    async fn get_all_unspent_ordered_map<'a>(
-        &'a self,
+    async fn get_all_unspent_ordered_map(
+        &self,
         addresses: Vec<Address>,
-    ) -> UtxoRpcResult<(UnspentMap, RecentlySpentOutPointsGuard)> {
+    ) -> UtxoRpcResult<(UnspentMap, RecentlySpentOutPointsGuard<'_>)> {
         utxo_common::get_all_unspent_ordered_map(self, addresses).await
     }
 

@@ -334,10 +334,10 @@ impl ListUtxoOps for QtumCoin {
         utxo_common::get_unspent_ordered_map(self, addresses).await
     }
 
-    async fn get_all_unspent_ordered_map<'a>(
-        &'a self,
+    async fn get_all_unspent_ordered_map(
+        &self,
         addresses: Vec<Address>,
-    ) -> UtxoRpcResult<(UnspentMap, RecentlySpentOutPointsGuard)> {
+    ) -> UtxoRpcResult<(UnspentMap, RecentlySpentOutPointsGuard<'_>)> {
         utxo_common::get_all_unspent_ordered_map(self, addresses).await
     }
 

@@ -155,7 +155,7 @@ where
     }
 
     /// Constructs an Xpub extractor without checking if the MarketMaker is initialized with a hardware wallet.
-    pub async fn new_unchecked(
+    pub fn new_unchecked(
         ctx: &MmArc,
         task_handle: &'task RpcTaskHandle<Task>,
         statuses: HwConnectStatuses<Task::InProgressStatus, Task::AwaitingStatus>,

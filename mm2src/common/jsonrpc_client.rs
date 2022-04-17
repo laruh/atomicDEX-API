@@ -102,6 +102,7 @@ pub enum JsonRpcId {
     Batch(BTreeSet<String>),
 }
 
+/// Serializable RPC request that is either single or batch.
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum JsonRpcRequestEnum {
@@ -110,10 +111,12 @@ pub enum JsonRpcRequestEnum {
 }
 
 impl JsonRpcRequestEnum {
+    /// Creates [`JsonRpcRequestEnum::Batch`] from the given `requests`.
     pub fn new_batch(requests: Vec<JsonRpcRequest>) -> JsonRpcRequestEnum {
         JsonRpcRequestEnum::Batch(JsonRpcBatchRequest(requests))
     }
 
+    /// Returns a `JsonRpcId` identifier of the request.
     pub fn rpc_id(&self) -> JsonRpcId {
         match self {
             JsonRpcRequestEnum::Single(single) => single.rpc_id(),
@@ -131,7 +134,7 @@ impl fmt::Debug for JsonRpcRequestEnum {
     }
 }
 
-/// Serializable RPC request
+/// Serializable RPC single request.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct JsonRpcRequest {
     pub jsonrpc: String,
@@ -142,8 +145,10 @@ pub struct JsonRpcRequest {
 }
 
 impl JsonRpcRequest {
+    // Returns [`JsonRpcRequest::id`].
     pub fn get_id(&self) -> &str { &self.id }
 
+    /// Returns a `JsonRpcId` identifier of the request.
     pub fn rpc_id(&self) -> JsonRpcId { JsonRpcId::Single(self.id.clone()) }
 }
 
@@ -151,19 +156,22 @@ impl From<JsonRpcRequest> for JsonRpcRequestEnum {
     fn from(single: JsonRpcRequest) -> Self { JsonRpcRequestEnum::Single(single) }
 }
 
-/// Serializable RPC request
+/// Serializable RPC batch request.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct JsonRpcBatchRequest(Vec<JsonRpcRequest>);
 
 impl JsonRpcBatchRequest {
+    /// Returns a `JsonRpcId` identifier of the request.
     pub fn rpc_id(&self) -> JsonRpcId { JsonRpcId::Batch(self.orig_sequence_ids().collect()) }
 
+    /// Returns the number of the requests in the batch.
     pub fn len(&self) -> usize { self.0.len() }
 
+    /// Whether the batch is empty.
     pub fn is_empty(&self) -> bool { self.0.is_empty() }
 
     /// Returns original sequence of identifiers.
-    /// The method is used to process batch response in the same order in which the requests were sent.
+    /// The method is used to process batch responses in the same order in which the requests were sent.
     fn orig_sequence_ids(&self) -> impl Iterator<Item = String> + '_ { self.0.iter().map(|req| req.id.clone()) }
 }
 
@@ -171,6 +179,7 @@ impl From<JsonRpcBatchRequest> for JsonRpcRequestEnum {
     fn from(batch: JsonRpcBatchRequest) -> Self { JsonRpcRequestEnum::Batch(batch) }
 }
 
+/// Deserializable RPC response that is either single or batch.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(untagged)]
 pub enum JsonRpcResponseEnum {
@@ -179,6 +188,7 @@ pub enum JsonRpcResponseEnum {
 }
 
 impl JsonRpcResponseEnum {
+    /// Returns a `JsonRpcId` identifier of the response.
     pub fn rpc_id(&self) -> JsonRpcId {
         match self {
             JsonRpcResponseEnum::Single(single) => single.rpc_id(),
@@ -187,6 +197,7 @@ impl JsonRpcResponseEnum {
     }
 }
 
+/// Deserializable RPC single response.
 #[derive(Clone, Debug, Deserialize)]
 pub struct JsonRpcResponse {
     #[serde(default)]
@@ -200,17 +211,22 @@ pub struct JsonRpcResponse {
 }
 
 impl JsonRpcResponse {
+    /// Returns a `JsonRpcId` identifier of the response.
     pub fn rpc_id(&self) -> JsonRpcId { JsonRpcId::Single(self.id.clone()) }
 }
 
+/// Deserializable RPC batch response.
 #[derive(Clone, Debug, Deserialize)]
 pub struct JsonRpcBatchResponse(Vec<JsonRpcResponse>);
 
 impl JsonRpcBatchResponse {
+    /// Returns a `JsonRpcId` identifier of the response.
     pub fn rpc_id(&self) -> JsonRpcId { JsonRpcId::Batch(self.0.iter().map(|res| res.id.clone()).collect()) }
 
+    /// Returns the number of the requests in the batch.
     pub fn len(&self) -> usize { self.0.len() }
 
+    /// Whether the batch is empty.
     pub fn is_empty(&self) -> bool { self.0.is_empty() }
 }
 
@@ -249,19 +265,26 @@ pub enum JsonRpcErrorType {
 }
 
 impl JsonRpcErrorType {
-    pub fn is_transport(&self) -> bool { matches!(*self, JsonRpcErrorType::Transport(_)) }
+    /// Whether the error type is [`JsonRpcErrorType::Transport`].
+    pub fn is_transport(&self) -> bool { matches!(self, JsonRpcErrorType::Transport(_)) }
 }
 
 pub trait JsonRpcClient {
+    /// Returns a stringified version of the JSON-RPC protocol.
     fn version(&self) -> &'static str;
 
+    /// Returns a stringified identifier of the next request.
     fn next_id(&self) -> String;
 
     /// Get info that is used in particular to supplement the error info
     fn client_info(&self) -> String;
 
+    /// Sends the given `request` to the remote.
+    /// Returns either an address `JsonRpcRemoteAddr` of the responder and the `JsonRpcResponseEnum` response,
+    /// or a stringified error.
     fn transport(&self, request: JsonRpcRequestEnum) -> JsonRpcResponseFut;
 
+    /// Sends the given single `request` to the remote and tries to decode the response into `T`.
     fn send_request<T: DeserializeOwned + Send + 'static>(&self, request: JsonRpcRequest) -> RpcRes<T> {
         let client_info = self.client_info();
         Box::new(
@@ -270,6 +293,7 @@ pub trait JsonRpcClient {
         )
     }
 
+    /// Sends the given batch `request` to the remote and tries to decode the batch response into `Vec<T>`.
     /// Responses are guaranteed to be in the same order in which they were requested.
     fn send_batch_request<T: DeserializeOwned + Send + 'static>(&self, request: JsonRpcBatchRequest) -> RpcRes<Vec<T>> {
         try_fu!(self.validate_batch_request(&request));
@@ -295,8 +319,12 @@ pub trait JsonRpcClient {
 
 /// The trait is used when the rpc client instance has more than one remote endpoints.
 pub trait JsonRpcMultiClient: JsonRpcClient {
+    /// Sends the given `request` to the specified `to_addr` remote.
+    /// Returns either an address `JsonRpcRemoteAddr` of the responder and the `JsonRpcResponseEnum` response,
+    /// or a stringified error.
     fn transport_exact(&self, to_addr: String, request: JsonRpcRequestEnum) -> JsonRpcResponseFut;
 
+    /// Sends the given single `request` to the specified `to_addr` remote and tries to decode the response into `T`.
     fn send_request_to<T: DeserializeOwned + Send + 'static>(
         &self,
         to_addr: &str,
@@ -310,6 +338,8 @@ pub trait JsonRpcMultiClient: JsonRpcClient {
     }
 }
 
+/// Checks if the given `result` is success and contains `JsonRpcResponse`.
+/// Tries to decode the batch response into `T`.
 fn process_transport_single_result<T: DeserializeOwned + Send + 'static>(
     result: Result<(JsonRpcRemoteAddr, JsonRpcResponseEnum), String>,
     client_info: String,
@@ -337,6 +367,8 @@ fn process_transport_single_result<T: DeserializeOwned + Send + 'static>(
     }
 }
 
+/// Checks if the given `result` is success and contains `JsonRpcBatchResponse`.
+/// Tries to decode the batch response into `Vec<T>` in the same order in which they were requested.
 fn process_transport_batch_result<T: DeserializeOwned + Send + 'static>(
     result: Result<(JsonRpcRemoteAddr, JsonRpcResponseEnum), String>,
     client_info: String,
@@ -404,6 +436,8 @@ fn process_transport_batch_result<T: DeserializeOwned + Send + 'static>(
     Ok(result)
 }
 
+/// Tries to decode the given single `response` into `T` if it doesn't contain an error,
+/// otherwise returns `JsonRpcError`.
 fn process_single_response<T: DeserializeOwned + Send + 'static>(
     client_info: String,
     remote_addr: JsonRpcRemoteAddr,

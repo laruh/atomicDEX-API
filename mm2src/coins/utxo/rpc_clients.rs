@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use bigdecimal::BigDecimal;
 use chain::{BlockHeader, BlockHeaderBits, BlockHeaderNonce, OutPoint, Transaction as UtxoTx};
 use common::custom_futures::{select_ok_sequential, FutureTimerExt};
-use common::custom_iter::IntoGroupMapResult;
+use common::custom_iter::TryIntoGroupMap;
 use common::executor::{spawn, Timer};
 use common::jsonrpc_client::{BatchRequest, JsonRpcBatchResponse, JsonRpcClient, JsonRpcError, JsonRpcErrorType,
                              JsonRpcId, JsonRpcMultiClient, JsonRpcRemoteAddr, JsonRpcRequest, JsonRpcRequestEnum,
@@ -26,6 +26,7 @@ use futures01::future::select_ok;
 use futures01::sync::{mpsc, oneshot};
 use futures01::{Future, Sink, Stream};
 use http::Uri;
+use itertools::Itertools;
 use keys::hash::H256;
 use keys::{Address, Type as ScriptType};
 #[cfg(test)] use mocktopus::macros::*;
@@ -35,7 +36,7 @@ use serialization::{deserialize, serialize, serialize_with_flags, CoinVariant, C
                     SERIALIZE_TRANSACTION_WITNESS};
 use sha2::{Digest, Sha256};
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt;
 use std::io;
 use std::net::{SocketAddr, ToSocketAddrs};
@@ -262,27 +263,38 @@ impl From<NumConversError> for UtxoRpcError {
 /// Common operations that both types of UTXO clients have but implement them differently
 #[async_trait]
 pub trait UtxoRpcClientOps: fmt::Debug + Send + Sync + 'static {
+    /// Returns available unspents for the given `address`.
     fn list_unspent(&self, address: &Address, decimals: u8) -> UtxoRpcFut<Vec<UnspentInfo>>;
 
+    /// Returns available unspents for every given `addresses`.
     fn list_unspent_group(&self, addresses: Vec<Address>, decimals: u8) -> UtxoRpcFut<UnspentMap>;
 
+    /// Submits the given `tx` transaction to blockchain network.
     fn send_transaction(&self, tx: &UtxoTx) -> UtxoRpcFut<H256Json>;
 
+    /// Submits the raw `tx` transaction (serialized, hex-encoded) to blockchain network.
     fn send_raw_transaction(&self, tx: BytesJson) -> UtxoRpcFut<H256Json>;
 
+    /// Returns raw transaction (serialized, hex-encoded) by the given `txid`.
     fn get_transaction_bytes(&self, txid: &H256Json) -> UtxoRpcFut<BytesJson>;
 
+    /// Returns verbose transaction by the given `txid`.
     fn get_verbose_transaction(&self, txid: &H256Json) -> UtxoRpcFut<RpcTransaction>;
 
+    /// Returns verbose transactions in the same order they were requested.
     fn get_verbose_transactions(&self, tx_ids: &[H256Json]) -> UtxoRpcFut<Vec<RpcTransaction>>;
 
+    /// Returns the height of the most-work fully-validated chain.
     fn get_block_count(&self) -> UtxoRpcFut<u64>;
 
+    /// Requests balance of the given `address`.
     fn display_balance(&self, address: Address, decimals: u8) -> RpcRes<BigDecimal>;
 
+    /// Requests balances of the given `addresses`.
+    /// The pairs `(Address, BigDecimal)` are guaranteed to be in the same order in which they were requested.
     fn display_balances(&self, addresses: Vec<Address>, decimals: u8) -> UtxoRpcFut<Vec<(Address, BigDecimal)>>;
 
-    /// returns fee estimation per KByte in satoshis
+    /// Returns fee estimation per KByte in satoshis.
     fn estimate_fee_sat(
         &self,
         decimals: u8,
@@ -291,8 +303,10 @@ pub trait UtxoRpcClientOps: fmt::Debug + Send + Sync + 'static {
         n_blocks: u32,
     ) -> UtxoRpcFut<u64>;
 
+    /// Returns the minimum fee a low-priority transaction must pay in order to be accepted to the daemon’s memory pool.
     fn get_relay_fee(&self) -> RpcRes<BigDecimal>;
 
+    /// Tries to find a transaction that spends the specified `vout` output of the `tx_hash` transaction.
     fn find_output_spend(
         &self,
         tx_hash: H256,
@@ -309,6 +323,7 @@ pub trait UtxoRpcClientOps: fmt::Debug + Send + Sync + 'static {
         coin_variant: CoinVariant,
     ) -> UtxoRpcFut<u32>;
 
+    /// Returns block time in seconds since epoch (Jan 1 1970 GMT).
     async fn get_block_timestamp(&self, height: u64) -> Result<u64, MmError<UtxoRpcError>>;
 }
 
@@ -682,7 +697,7 @@ impl UtxoRpcClientOps for NativeClient {
                         Ok((orig_address, unspent_info))
                     })
                     // Collect `(Address, UnspentInfo)` items into `HashMap<Address, Vec<UnspentInfo>>` grouped by the addresses.
-                    .into_group_map_result()
+                    .try_into_group_map()
             });
         Box::new(fut)
     }
@@ -954,7 +969,7 @@ impl NativeClientImpl {
     }
 
     /// https://developer.bitcoin.org/reference/rpc/getrawtransaction.html
-    /// Always returns verbose transactions in a batch.
+    /// Always returns verbose transactions in the same order they were requested.
     fn get_raw_transaction_verbose_batch(&self, tx_ids: &[H256Json]) -> RpcRes<Vec<RpcTransaction>> {
         let verbose = 1;
         Box::new(
@@ -1733,11 +1748,9 @@ impl ElectrumClient {
                     unspents
                         .into_iter()
                         .map(|hash_unspents| {
-                            let mut set = HashSet::with_capacity(hash_unspents.len());
                             let hash_unspents: Vec<_> = hash_unspents
                                 .into_iter()
-                                // Don't use `Itertools::unique_by` because it seems to be inefficient.
-                                .filter(|unspent| set.insert((unspent.tx_hash, unspent.tx_pos)))
+                                .unique_by(|unspent| (unspent.tx_hash, unspent.tx_pos))
                                 .collect();
                             hash_unspents
                         })
@@ -1762,6 +1775,8 @@ impl ElectrumClient {
         Box::new(fut.boxed().compat())
     }
 
+    /// https://electrumx.readthedocs.io/en/latest/protocol-methods.html#blockchain-scripthash-gethistory
+    /// Requests balances in a batch and returns them in the same order they were requested.
     pub fn scripthash_get_balances<I>(&self, hashes: I) -> RpcRes<Vec<ElectrumBalance>>
     where
         I: IntoIterator<Item = String>,
@@ -1991,6 +2006,8 @@ impl UtxoRpcClientOps for ElectrumClient {
                 .map(move |results| {
                     results
                         .into_iter()
+                        // `scripthash_get_balances` returns `ElectrumBalance` elements in the same order in which they were requested.
+                        // So we can zip `addresses` and the balances into one iterator.
                         .zip(addresses)
                         .map(|(result, address)| {
                             let balance_sat = BigInt::from(result.confirmed) + BigInt::from(result.unconfirmed);

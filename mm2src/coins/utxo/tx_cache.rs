@@ -51,7 +51,7 @@ where
     futures::future::join_all(it).await.into_iter().collect()
 }
 
-/// Upload transactions to cache concurrently.
+/// Uploads transactions to cache concurrently.
 /// Note: this function locks the `TX_CACHE_LOCK` mutex and takes `txs` as the Hash map
 /// to avoid reading and writing the same files at the same time.
 pub async fn cache_transactions_concurrently(tx_cache_path: &Path, txs: &HashMap<H256Json, RpcTransaction>) {
@@ -71,7 +71,7 @@ async fn load_transaction_from_cache(tx_cache_path: &Path, txid: H256Json) -> Tx
     read_json(&path).await.mm_err(TxCacheError::from)
 }
 
-/// Upload transaction to cache.
+/// Uploads transaction to cache.
 async fn cache_transaction(tx_cache_path: &Path, tx: &RpcTransaction) -> TxCacheResult<()> {
     const USE_TMP_FILE: bool = true;
 

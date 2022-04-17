@@ -740,6 +740,7 @@ impl UtxoAddressScanner {
     }
 }
 
+/// Contains lists of mature and immature UTXOs.
 #[derive(Debug, Default)]
 pub struct MatureUnspentList {
     mature: Vec<UnspentInfo>,
@@ -761,7 +762,7 @@ impl MatureUnspentList {
         }
     }
 
-    pub fn into_mature(self) -> Vec<UnspentInfo> { self.mature }
+    pub fn only_mature(self) -> Vec<UnspentInfo> { self.mature }
 
     pub fn to_coin_balance(&self, decimals: u8) -> CoinBalance {
         let fold = |acc: BigDecimal, x: &UnspentInfo| acc + big_decimal_from_sat_unsigned(x.value, decimals);
@@ -824,7 +825,7 @@ pub trait UtxoCommonOps:
         keypair: &KeyPair,
     ) -> Result<UtxoTx, String>;
 
-    /// Try to load verbose transaction from cache or try to request it from Rpc client.
+    /// Loads verbose transactions from cache or requests it using RPC client.
     fn get_verbose_transactions_from_cache_or_rpc(
         &self,
         tx_ids: HashSet<H256Json>,
@@ -883,10 +884,10 @@ pub trait ListUtxoOps {
     ///
     /// The function doesn't check if the unspents are mature or immature.
     /// Consider using [`ListUtxoOps::get_unspent_ordered_list`] or [`ListUtxoOps::get_unspent_ordered_map`] instead.
-    async fn get_all_unspent_ordered_map<'a>(
-        &'a self,
+    async fn get_all_unspent_ordered_map(
+        &self,
         addresses: Vec<Address>,
-    ) -> UtxoRpcResult<(UnspentMap, RecentlySpentOutPointsGuard)>;
+    ) -> UtxoRpcResult<(UnspentMap, RecentlySpentOutPointsGuard<'_>)>;
 
     /// Returns available mature and immature unspents in ascending order for every given `addresses`
     /// + `RecentlySpentOutPoints` MutexGuard for further interaction (e.g. to add new transaction to it).

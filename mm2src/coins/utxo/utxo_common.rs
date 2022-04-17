@@ -383,6 +383,7 @@ pub async fn load_hd_accounts_from_storage(
     }
 }
 
+/// Requests balance of the given `address`.
 pub async fn address_balance<T>(coin: &T, address: &Address) -> BalanceResult<CoinBalance>
 where
     T: UtxoCommonOps + MarketCoinOps,
@@ -409,6 +410,8 @@ where
     })
 }
 
+/// Requests balances of the given `addresses`.
+/// The pairs `(Address, CoinBalance)` are guaranteed to be in the same order in which they were requested.
 pub async fn addresses_balances<T>(coin: &T, addresses: Vec<Address>) -> BalanceResult<Vec<(Address, CoinBalance)>>
 where
     T: UtxoCommonOps + MarketCoinOps,
@@ -2756,7 +2759,7 @@ pub async fn get_mature_unspent_ordered_map<T: UtxoCommonOps>(
     addresses: Vec<Address>,
 ) -> UtxoRpcResult<(MatureUnspentMap, RecentlySpentOutPointsGuard<'_>)> {
     let (unspents_map, recently_spent) = coin.get_all_unspent_ordered_map(addresses).await?;
-    // Get an iterator of futures: `Iterator<Item=Future<Item=(Address, MatureUnspentList)>>`
+    // Get an iterator of futures: `Future<Output=UtxoRpcResult<(Address, MatureUnspentList)>>`
     let fut_it = unspents_map.into_iter().map(|(address, unspents)| {
         identify_mature_unspents(coin, unspents).map(|res| -> UtxoRpcResult<(Address, MatureUnspentList)> {
             let mature_unspents = res?;
@@ -2768,8 +2771,7 @@ pub async fn get_mature_unspent_ordered_map<T: UtxoCommonOps>(
     Ok((result_map, recently_spent))
 }
 
-/// Separates the given `unspents` outputs into mature and immature.
-/// Identifies mature and immature unspent outputs.
+/// Splits the given `unspents` outputs into mature and immature.
 pub async fn identify_mature_unspents<T>(coin: &T, unspents: Vec<UnspentInfo>) -> UtxoRpcResult<MatureUnspentList>
 where
     T: UtxoCommonOps,
@@ -2777,7 +2779,7 @@ where
     /// Returns `true` if the given transaction has a known non-zero height.
     fn can_tx_be_cached(tx: &RpcTransaction) -> bool { tx.height > Some(0) }
 
-    /// Calculates an actual confirmations number of the given `tx` transaction loaded from cache.
+    /// Calculates actual confirmations number of the given `tx` transaction loaded from cache.
     fn calc_actual_cached_tx_confirmations(tx: &RpcTransaction, block_count: u64) -> UtxoRpcResult<u32> {
         let tx_height = tx.height.or_mm_err(|| {
             UtxoRpcError::Internal(format!(r#"Warning, height of cached "{:?}" tx is unknown"#, tx.txid))
@@ -2868,7 +2870,7 @@ pub fn is_unspent_mature(mature_confirmations: u32, output: &RpcTransaction) -> 
 }
 
 /// [`UtxoCommonOps::get_verbose_transactions_from_cache_or_rpc`] implementation.
-/// Loads a verbose `RpcTransaction` transaction from cache or requests it using RPC client.
+/// Loads verbose transactions from cache or requests it using RPC client.
 #[cfg(not(target_arch = "wasm32"))]
 pub async fn get_verbose_transactions_from_cache_or_rpc(
     coin: &UtxoCoinFields,
@@ -2879,7 +2881,7 @@ pub async fn get_verbose_transactions_from_cache_or_rpc(
 
     match coin.tx_cache_directory {
         Some(ref tx_cache_path) => {
-            tx_cache::load_transactions_from_cache_concurrently(tx_cache_path, tx_ids.iter().cloned())
+            tx_cache::load_transactions_from_cache_concurrently(tx_cache_path, tx_ids.into_iter())
                 .await
                 .into_iter()
                 .for_each(|(txid, res)| match res {
@@ -2897,7 +2899,7 @@ pub async fn get_verbose_transactions_from_cache_or_rpc(
                 });
         },
         // the coin doesn't support TX local cache, don't try to load from cache
-        None => to_request = tx_ids.iter().copied().collect(),
+        None => to_request = tx_ids.into_iter().collect(),
     }
 
     result_map.extend(
@@ -2912,13 +2914,13 @@ pub async fn get_verbose_transactions_from_cache_or_rpc(
 }
 
 /// [`UtxoCommonOps::get_verbose_transactions_from_cache_or_rpc`] implementation.
-/// Loads a verbose `RpcTransaction` transaction from cache or requests it using RPC client.
+/// Loads verbose transactions from cache or requests it using RPC client.
 #[cfg(target_arch = "wasm32")]
 pub async fn get_verbose_transactions_from_cache_or_rpc(
     coin: &UtxoCoinFields,
     tx_ids: HashSet<H256Json>,
 ) -> UtxoRpcResult<HashMap<H256Json, VerboseTransactionFrom>> {
-    let tx_ids: Vec<_> = tx_ids.iter().copied().collect();
+    let tx_ids: Vec<_> = tx_ids.into_iter().collect();
     let txs = coin
         .rpc_client
         .get_verbose_transactions(&tx_ids)
@@ -2930,7 +2932,7 @@ pub async fn get_verbose_transactions_from_cache_or_rpc(
     Ok(txs)
 }
 
-/// Save the given `txs` transactions in a TX cache.
+/// Saves the given `txs` transactions in a TX cache.
 /// The function takes `txs` as the Hash map to avoid duplicating same transactions.
 #[cfg(not(target_arch = "wasm32"))]
 pub async fn cache_transactions_if_possible(coin: &UtxoCoinFields, txs: &HashMap<H256Json, RpcTransaction>) {
@@ -2939,7 +2941,7 @@ pub async fn cache_transactions_if_possible(coin: &UtxoCoinFields, txs: &HashMap
     }
 }
 
-/// Save the given `txs` transactions in a TX cache.
+/// Saves the given `txs` transactions in a TX cache.
 /// It takes `txs` as the Hash map to avoid duplicating same transactions.
 #[cfg(target_arch = "wasm32")]
 pub async fn cache_transactions_if_possible(_coin: &UtxoCoinFields, _txs: &HashMap<H256Json, RpcTransaction>) {}
@@ -3303,7 +3305,7 @@ pub async fn get_unspent_ordered_map<T: UtxoCommonOps>(
             .map(|(mature_unspents_map, recently_spent)| {
                 let unspents_map = mature_unspents_map
                     .into_iter()
-                    .map(|(address, unspents)| (address, unspents.into_mature()))
+                    .map(|(address, unspents)| (address, unspents.only_mature()))
                     .collect();
                 (unspents_map, recently_spent)
             })
@@ -3333,7 +3335,7 @@ pub async fn get_all_unspent_ordered_map<T: UtxoCommonOps>(
             .into_iter()
             // dedup just in case we add duplicates of same unspent out
             .unique_by(|unspent| unspent.outpoint.clone())
-            .sorted_by(|a, b| {
+            .sorted_unstable_by(|a, b| {
                 if a.value < b.value {
                     Ordering::Less
                 } else {
