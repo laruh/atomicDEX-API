@@ -944,7 +944,10 @@ fn test_send_contract_calls_recoverable_tx() {
         .transfer_output(to_address, amount, QRC20_GAS_LIMIT_DEFAULT, QRC20_GAS_PRICE_DEFAULT)
         .unwrap();
 
+    // brake the transfer output
     transfer_output.value = 777;
+    transfer_output.gas_limit = 777;
+    transfer_output.gas_price = 777;
 
     let tx_err = block_on(coin.send_contract_calls(vec![transfer_output])).unwrap_err();
 
