@@ -1793,6 +1793,7 @@ pub fn slp_addr_from_pubkey_str(pubkey: &str, prefix: &str) -> Result<String, Mm
 
 #[cfg(test)]
 mod slp_tests {
+    use std::mem::discriminant;
     use super::*;
     use crate::{utxo::bch::tbch_coin_for_test, TransactionErr};
     use common::block_on;
@@ -2020,7 +2021,7 @@ mod slp_tests {
         ))
         .unwrap_err();
 
-        let err = match tx_err {
+        let err = match tx_err.clone() {
             TransactionErr::TxRecoverableError(_tx, err) => err,
             TransactionErr::PlainError(err) => err,
         };
@@ -2061,6 +2062,15 @@ mod slp_tests {
             BroadcastTxErr::Other(err) => assert!(err.contains("is not valid with reason outputs greater than inputs")),
             e @ _ => panic!("Unexpected err {:?}", e),
         };
+
+        // The error variant should equal to `TxRecoverableError`
+        assert_eq!(
+            discriminant(&tx_err),
+            discriminant(&TransactionErr::TxRecoverableError(
+                Box::new(TransactionEnum::from(utxo_tx)),
+                String::new()
+            ))
+        );
     }
 
     #[test]

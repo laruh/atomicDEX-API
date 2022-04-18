@@ -313,7 +313,7 @@ impl Deref for TransactionEnum {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum TransactionErr {
     /// Keeps transactions while throwing errors.
     TxRecoverableError(Box<TransactionEnum>, String),
