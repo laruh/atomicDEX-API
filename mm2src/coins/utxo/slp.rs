@@ -1793,10 +1793,10 @@ pub fn slp_addr_from_pubkey_str(pubkey: &str, prefix: &str) -> Result<String, Mm
 
 #[cfg(test)]
 mod slp_tests {
-    use std::mem::discriminant;
     use super::*;
     use crate::{utxo::bch::tbch_coin_for_test, TransactionErr};
     use common::block_on;
+    use std::mem::discriminant;
 
     // https://slp.dev/specs/slp-token-type-1/#examples
     #[test]
