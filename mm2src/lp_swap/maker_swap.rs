@@ -16,7 +16,7 @@ use crate::mm2::MM_VERSION;
 use bigdecimal::BigDecimal;
 use bitcrypto::dhash160;
 use coins::{CanRefundHtlc, FeeApproxStage, FoundSwapTxSpend, MmCoinEnum, TradeFee, TradePreimageValue,
-            TransactionEnum, TransactionErr, ValidatePaymentInput};
+            TransactionEnum, ValidatePaymentInput};
 use common::log::{debug, error, warn};
 use common::mm_error::prelude::*;
 use common::privkey::key_pair_from_secret;
@@ -667,24 +667,21 @@ impl MakerSwap {
 
                     match payment_fut.compat().await {
                         Ok(t) => t,
-                        Err(err_enum) => match err_enum {
-                            TransactionErr::TxRecoverableError(tx, err) => {
+                        Err(err) => {
+                            if let Some(tx) = err.get_tx() {
                                 broadcast_p2p_tx_msg(
                                     &self.ctx,
                                     tx_helper_topic(self.maker_coin.ticker()),
                                     &tx,
                                     &self.p2p_privkey,
                                 );
+                            }
 
-                                return Ok((Some(MakerSwapCommand::Finish), vec![
-                                    MakerSwapEvent::MakerPaymentTransactionFailed(ERRL!("{}", err).into()),
-                                ]));
-                            },
-                            TransactionErr::PlainError(err) => {
-                                return Ok((Some(MakerSwapCommand::Finish), vec![
-                                    MakerSwapEvent::MakerPaymentTransactionFailed(ERRL!("{}", err).into()),
-                                ]))
-                            },
+                            return Ok((Some(MakerSwapCommand::Finish), vec![
+                                MakerSwapEvent::MakerPaymentTransactionFailed(
+                                    ERRL!("{}", err.get_plain_text_format()).into(),
+                                ),
+                            ]));
                         },
                     }
                 },
@@ -857,34 +854,28 @@ impl MakerSwap {
 
         let transaction = match spend_fut.compat().await {
             Ok(t) => t,
-            Err(err_enum) => match err_enum {
-                TransactionErr::TxRecoverableError(tx, err) => {
+            Err(err) => {
+                if let Some(tx) = err.get_tx() {
                     broadcast_p2p_tx_msg(
                         &self.ctx,
                         tx_helper_topic(self.taker_coin.ticker()),
                         &tx,
                         &self.p2p_privkey,
                     );
+                }
 
-                    return Ok((Some(MakerSwapCommand::RefundMakerPayment), vec![
-                        MakerSwapEvent::TakerPaymentSpendFailed(
-                            ERRL!("!taker_coin.send_maker_spends_taker_payment: {}", err).into(),
-                        ),
-                        MakerSwapEvent::MakerPaymentWaitRefundStarted {
-                            wait_until: self.wait_refund_until(),
-                        },
-                    ]));
-                },
-                TransactionErr::PlainError(err) => {
-                    return Ok((Some(MakerSwapCommand::RefundMakerPayment), vec![
-                        MakerSwapEvent::TakerPaymentSpendFailed(
-                            ERRL!("!taker_coin.send_maker_spends_taker_payment: {}", err).into(),
-                        ),
-                        MakerSwapEvent::MakerPaymentWaitRefundStarted {
-                            wait_until: self.wait_refund_until(),
-                        },
-                    ]))
-                },
+                return Ok((Some(MakerSwapCommand::RefundMakerPayment), vec![
+                    MakerSwapEvent::TakerPaymentSpendFailed(
+                        ERRL!(
+                            "!taker_coin.send_maker_spends_taker_payment: {}",
+                            err.get_plain_text_format()
+                        )
+                        .into(),
+                    ),
+                    MakerSwapEvent::MakerPaymentWaitRefundStarted {
+                        wait_until: self.wait_refund_until(),
+                    },
+                ]));
             },
         };
 
@@ -959,28 +950,25 @@ impl MakerSwap {
 
         let transaction = match spend_fut.compat().await {
             Ok(t) => t,
-            Err(err_enum) => match err_enum {
-                TransactionErr::TxRecoverableError(tx, err) => {
+            Err(err) => {
+                if let Some(tx) = err.get_tx() {
                     broadcast_p2p_tx_msg(
                         &self.ctx,
                         tx_helper_topic(self.maker_coin.ticker()),
                         &tx,
                         &self.p2p_privkey,
                     );
+                }
 
-                    return Ok((Some(MakerSwapCommand::Finish), vec![
-                        MakerSwapEvent::MakerPaymentRefundFailed(
-                            ERRL!("!maker_coin.send_maker_refunds_payment: {}", err).into(),
-                        ),
-                    ]));
-                },
-                TransactionErr::PlainError(err) => {
-                    return Ok((Some(MakerSwapCommand::Finish), vec![
-                        MakerSwapEvent::MakerPaymentRefundFailed(
-                            ERRL!("!maker_coin.send_maker_refunds_payment: {}", err).into(),
-                        ),
-                    ]))
-                },
+                return Ok((Some(MakerSwapCommand::Finish), vec![
+                    MakerSwapEvent::MakerPaymentRefundFailed(
+                        ERRL!(
+                            "!maker_coin.send_maker_refunds_payment: {}",
+                            err.get_plain_text_format()
+                        )
+                        .into(),
+                    ),
+                ]));
             },
         };
 
@@ -1242,18 +1230,17 @@ impl MakerSwap {
 
                 let transaction = match fut.compat().await {
                     Ok(t) => t,
-                    Err(err_enum) => match err_enum {
-                        TransactionErr::TxRecoverableError(tx, err) => {
+                    Err(err) => {
+                        if let Some(tx) = err.get_tx() {
                             broadcast_p2p_tx_msg(
                                 &self.ctx,
                                 tx_helper_topic(self.maker_coin.ticker()),
                                 &tx,
                                 &self.p2p_privkey,
                             );
+                        }
 
-                            return ERR!("{}", err);
-                        },
-                        TransactionErr::PlainError(err) => return ERR!("{}", err),
+                        return ERR!("{}", err.get_plain_text_format());
                     },
                 };
 

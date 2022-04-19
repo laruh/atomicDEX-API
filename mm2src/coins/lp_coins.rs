@@ -321,6 +321,26 @@ pub enum TransactionErr {
     PlainError(String),
 }
 
+impl TransactionErr {
+    /// Returns transaction if the error includes it.
+    #[inline]
+    pub fn get_tx(&self) -> Option<TransactionEnum> {
+        match self {
+            TransactionErr::TxRecoverableError(tx, _) => Some(*tx.clone()),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    /// Returns plain text part of error.
+    pub fn get_plain_text_format(&self) -> String {
+        match self {
+            TransactionErr::TxRecoverableError(_, err) => err.to_string(),
+            TransactionErr::PlainError(err) => err.to_string(),
+        }
+    }
+}
+
 pub type TransactionFut = Box<dyn Future<Item = TransactionEnum, Error = TransactionErr> + Send>;
 
 #[derive(Debug, PartialEq)]
