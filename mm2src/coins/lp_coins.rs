@@ -1458,6 +1458,10 @@ impl From<keys::Error> for SignatureError {
     fn from(e: keys::Error) -> Self { SignatureError::InternalError(e.to_string()) }
 }
 
+impl From<ethkey::Error> for SignatureError {
+    fn from(e: ethkey::Error) -> Self { SignatureError::InternalError(e.to_string()) }
+}
+
 impl From<PrivKeyNotAllowed> for SignatureError {
     fn from(e: PrivKeyNotAllowed) -> Self { SignatureError::InternalError(e.to_string()) }
 }
@@ -1475,6 +1479,8 @@ pub enum VerificationError {
     InternalError(String),
     #[display(fmt = "Signature decoding error: {}", _0)]
     SignatureDecodingError(String),
+    #[display(fmt = "Address decoding error: {}", _0)]
+    AddressDecodingError(String),
     #[display(fmt = "Coin is not found: {}", _0)]
     CoinIsNotFound(String),
     #[display(fmt = "Message prefix not found")]
@@ -1486,6 +1492,7 @@ impl HttpStatusCode for VerificationError {
         match self {
             VerificationError::InvalidRequest(_) => StatusCode::BAD_REQUEST,
             VerificationError::SignatureDecodingError(_) => StatusCode::BAD_REQUEST,
+            VerificationError::AddressDecodingError(_) => StatusCode::BAD_REQUEST,
             VerificationError::CoinIsNotFound(_) => StatusCode::BAD_REQUEST,
             VerificationError::InternalError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             VerificationError::PrefixNotFound => StatusCode::INTERNAL_SERVER_ERROR,
@@ -1497,8 +1504,16 @@ impl From<base64::DecodeError> for VerificationError {
     fn from(e: base64::DecodeError) -> Self { VerificationError::SignatureDecodingError(e.to_string()) }
 }
 
+impl From<hex::FromHexError> for VerificationError {
+    fn from(e: hex::FromHexError) -> Self { VerificationError::AddressDecodingError(e.to_string()) }
+}
+
 impl From<keys::Error> for VerificationError {
     fn from(e: keys::Error) -> Self { VerificationError::InternalError(e.to_string()) }
+}
+
+impl From<ethkey::Error> for VerificationError {
+    fn from(e: ethkey::Error) -> Self { VerificationError::InternalError(e.to_string()) }
 }
 
 impl From<CoinFindError> for VerificationError {
