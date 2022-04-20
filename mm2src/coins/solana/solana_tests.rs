@@ -6,7 +6,6 @@ use crate::MarketCoinOps;
 use base58::ToBase58;
 use solana_client::rpc_request::TokenAccountsFilter;
 use solana_sdk::signature::Signer;
-use std::str;
 use std::str::FromStr;
 
 mod tests {
@@ -258,11 +257,11 @@ mod tests {
             .unwrap();
         println!("{:?}", valid_tx_details);
 
-        let tx_str = str::from_utf8(&*valid_tx_details.tx_hex.0).unwrap();
-        let res = sol_coin.send_raw_tx(tx_str).compat().await.unwrap();
+        let tx_str = hex::encode(&*valid_tx_details.tx_hex.0);
+        let res = sol_coin.send_raw_tx(&tx_str).compat().await.unwrap();
 
         let res2 = sol_coin
-            .send_raw_tx_bytes(&*valid_tx_details.tx_hex)
+            .send_raw_tx_bytes(&*valid_tx_details.tx_hex.0)
             .compat()
             .await
             .unwrap();

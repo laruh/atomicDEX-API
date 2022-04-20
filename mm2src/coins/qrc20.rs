@@ -1072,7 +1072,7 @@ impl MarketCoinOps for Qrc20Coin {
 
     #[inline(always)]
     fn send_raw_tx_bytes(&self, tx: &[u8]) -> Box<dyn Future<Item = String, Error = String> + Send> {
-        utxo_common::send_raw_tx(&self.utxo, tx)
+        utxo_common::send_raw_tx_bytes(&self.utxo, tx)
     }
 
     fn wait_for_confirmations(

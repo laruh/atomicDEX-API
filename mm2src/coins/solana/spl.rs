@@ -117,14 +117,13 @@ async fn withdraw_spl_token_impl(coin: SplToken, req: WithdrawRequest) -> Withdr
     let signers = vec![&coin.platform_coin.key_pair];
     let tx = Transaction::new(&signers, msg, hash);
     let serialized_tx = serialize(&tx).map_to_mm(|e| WithdrawError::InternalError(e.to_string()))?;
-    let encoded_tx = hex::encode(&serialized_tx);
     let received_by_me = if req.to == coin.platform_coin.my_address {
         res.to_send.clone()
     } else {
         0.into()
     };
     Ok(TransactionDetails {
-        tx_hex: encoded_tx.as_bytes().into(),
+        tx_hex: serialized_tx.into(),
         tx_hash: tx.signatures[0].to_string(),
         from: vec![coin.platform_coin.my_address.clone()],
         to: vec![req.to],

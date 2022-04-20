@@ -2,7 +2,7 @@ use super::*;
 use crate::common::Future01CompatExt;
 use crate::{solana::solana_common_tests::solana_coin_for_test,
             solana::solana_common_tests::{spl_coin_for_test, SolanaNet}};
-use std::{str::from_utf8, str::FromStr};
+use std::str::FromStr;
 
 mod tests {
     use super::*;
@@ -83,8 +83,8 @@ mod tests {
         assert_eq!(valid_tx_details.coin, "USDC".to_string());
         assert_ne!(valid_tx_details.timestamp, 0);
 
-        let tx_str = from_utf8(&*valid_tx_details.tx_hex.0).unwrap();
-        let res = usdc_sol_coin.send_raw_tx(tx_str).compat().await.unwrap();
+        let tx_str = hex::encode(&*valid_tx_details.tx_hex.0);
+        let res = usdc_sol_coin.send_raw_tx(&tx_str).compat().await.unwrap();
         println!("{:?}", res);
 
         let res2 = usdc_sol_coin

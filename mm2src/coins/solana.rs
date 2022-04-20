@@ -239,7 +239,6 @@ async fn withdraw_base_coin_impl(coin: SolanaCoin, req: WithdrawRequest) -> With
     let to = solana_sdk::pubkey::Pubkey::try_from(&*req.to)?;
     let tx = solana_sdk::system_transaction::transfer(&coin.key_pair, &to, res.lamports_to_send, hash);
     let serialized_tx = serialize(&tx).map_to_mm(|e| WithdrawError::InternalError(e.to_string()))?;
-    let encoded_tx = hex::encode(&serialized_tx);
     let total_amount = lamports_to_sol(res.lamports_to_send);
     let received_by_me = if req.to == coin.my_address {
         total_amount.clone()
@@ -248,7 +247,7 @@ async fn withdraw_base_coin_impl(coin: SolanaCoin, req: WithdrawRequest) -> With
     };
     let spent_by_me = &total_amount + &res.sol_required;
     Ok(TransactionDetails {
-        tx_hex: encoded_tx.as_bytes().into(),
+        tx_hex: serialized_tx.into(),
         tx_hash: tx.signatures[0].to_string(),
         from: vec![coin.my_address.clone()],
         to: vec![req.to],
@@ -378,8 +377,7 @@ impl MarketCoinOps for SolanaCoin {
         let coin = self.clone();
         let tx = tx.to_owned();
         let fut = async move {
-            let bytes = hex::decode(tx).map_to_mm(|e| e).map_err(|e| format!("{:?}", e))?;
-            let tx: Transaction = deserialize(bytes.as_slice())
+            let tx: Transaction = deserialize(tx.as_slice())
                 .map_to_mm(|e| e)
                 .map_err(|e| format!("{:?}", e))?;
             let signature = coin.rpc().send_transaction(&tx).await.map_err(|e| format!("{:?}", e))?;

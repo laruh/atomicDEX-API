@@ -1685,15 +1685,25 @@ where
     Box::new(fut.boxed().compat())
 }
 
-/// Receives raw transaction bytes as input and returns tx hash in hexadecimal format
-pub fn send_raw_tx<T: AsRef<[u8]>>(
-    coin: &UtxoCoinFields,
-    tx: T,
-) -> Box<dyn Future<Item = String, Error = String> + Send> {
+/// Receives raw transaction as input and returns tx hash in hexadecimal format
+pub fn send_raw_tx(coin: &UtxoCoinFields, tx: &str) -> Box<dyn Future<Item = String, Error = String> + Send> {
     let bytes = try_fus!(hex::decode(tx));
     Box::new(
         coin.rpc_client
             .send_raw_transaction(bytes.into())
+            .map_err(|e| ERRL!("{}", e))
+            .map(|hash| format!("{:?}", hash)),
+    )
+}
+
+/// Receives raw transaction bytes as input and returns tx hash in hexadecimal format
+pub fn send_raw_tx_bytes(
+    coin: &UtxoCoinFields,
+    tx_bytes: &[u8],
+) -> Box<dyn Future<Item = String, Error = String> + Send> {
+    Box::new(
+        coin.rpc_client
+            .send_raw_transaction(tx_bytes.into())
             .map_err(|e| ERRL!("{}", e))
             .map(|hash| format!("{:?}", hash)),
     )
