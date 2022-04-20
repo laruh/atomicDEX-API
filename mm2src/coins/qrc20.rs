@@ -463,7 +463,7 @@ impl Qrc20Coin {
             Ok(tx) => tx,
             Err(err) => {
                 return Err(TransactionErr::TxRecoverableError(
-                    Box::new(TransactionEnum::from(signed)),
+                    TransactionEnum::from(signed),
                     ERRL!("{:?}", err),
                 ));
             },

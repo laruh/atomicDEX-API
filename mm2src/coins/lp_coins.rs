@@ -314,9 +314,10 @@ impl Deref for TransactionEnum {
 }
 
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum TransactionErr {
     /// Keeps transactions while throwing errors.
-    TxRecoverableError(Box<TransactionEnum>, String),
+    TxRecoverableError(TransactionEnum, String),
     /// Simply for plain error messages.
     PlainError(String),
 }
@@ -326,7 +327,7 @@ impl TransactionErr {
     #[inline]
     pub fn get_tx(&self) -> Option<TransactionEnum> {
         match self {
-            TransactionErr::TxRecoverableError(tx, _) => Some(*tx.clone()),
+            TransactionErr::TxRecoverableError(tx, _) => Some(tx.clone()),
             _ => None,
         }
     }

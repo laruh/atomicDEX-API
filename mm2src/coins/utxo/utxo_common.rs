@@ -1128,7 +1128,7 @@ pub fn send_maker_spends_taker_payment<T: UtxoCommonOps>(
             Ok(_) => (),
             Err(err) => {
                 return Err(TransactionErr::TxRecoverableError(
-                    Box::new(TransactionEnum::from(transaction)),
+                    TransactionEnum::from(transaction),
                     ERRL!("{:?}", err),
                 ));
             },
@@ -1188,7 +1188,7 @@ pub fn send_taker_spends_maker_payment<T: UtxoCommonOps>(
             Ok(_) => (),
             Err(err) => {
                 return Err(TransactionErr::TxRecoverableError(
-                    Box::new(TransactionEnum::from(transaction)),
+                    TransactionEnum::from(transaction),
                     ERRL!("{:?}", err),
                 ));
             },
@@ -1246,7 +1246,7 @@ pub fn send_taker_refunds_payment<T: UtxoCommonOps>(
             Ok(_) => (),
             Err(err) => {
                 return Err(TransactionErr::TxRecoverableError(
-                    Box::new(TransactionEnum::from(transaction)),
+                    TransactionEnum::from(transaction),
                     ERRL!("{:?}", err),
                 ));
             },
@@ -1303,7 +1303,7 @@ pub fn send_maker_refunds_payment<T: UtxoCommonOps>(
             Ok(_) => (),
             Err(err) => {
                 return Err(TransactionErr::TxRecoverableError(
-                    Box::new(TransactionEnum::from(transaction)),
+                    TransactionEnum::from(transaction),
                     ERRL!("{:?}", err),
                 ));
             },

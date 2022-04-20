@@ -205,7 +205,7 @@ fn test_send_maker_spends_taker_payment_recoverable_tx() {
     assert_eq!(
         discriminant(&tx_err),
         discriminant(&TransactionErr::TxRecoverableError(
-            Box::new(TransactionEnum::from(tx)),
+            TransactionEnum::from(tx),
             String::new()
         ))
     );

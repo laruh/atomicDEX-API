@@ -2067,7 +2067,7 @@ mod slp_tests {
         assert_eq!(
             discriminant(&tx_err),
             discriminant(&TransactionErr::TxRecoverableError(
-                Box::new(TransactionEnum::from(utxo_tx)),
+                TransactionEnum::from(utxo_tx),
                 String::new()
             ))
         );

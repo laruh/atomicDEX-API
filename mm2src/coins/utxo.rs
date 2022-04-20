@@ -1532,7 +1532,7 @@ where
         Ok(_) => (),
         Err(err) => {
             return Err(TransactionErr::TxRecoverableError(
-                Box::new(TransactionEnum::from(signed)),
+                TransactionEnum::from(signed),
                 ERRL!("{:?}", err),
             ));
         },
