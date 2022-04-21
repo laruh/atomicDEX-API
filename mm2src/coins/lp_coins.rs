@@ -1656,6 +1656,21 @@ impl Deref for MmCoinEnum {
     }
 }
 
+impl MmCoinEnum {
+    pub fn is_utxo_and_in_native_mode(&self) -> bool {
+        match self {
+            MmCoinEnum::UtxoCoin(ref c) => c.as_ref().rpc_client.is_native(),
+            MmCoinEnum::QtumCoin(ref c) => c.as_ref().rpc_client.is_native(),
+            MmCoinEnum::Qrc20Coin(ref c) => c.as_ref().rpc_client.is_native(),
+            MmCoinEnum::Bch(ref c) => c.as_ref().rpc_client.is_native(),
+            MmCoinEnum::SlpToken(ref c) => c.as_ref().rpc_client.is_native(),
+            #[cfg(all(not(target_arch = "wasm32"), feature = "zhtlc"))]
+            MmCoinEnum::ZCoin(ref c) => c.as_ref().rpc_client.is_native(),
+            _ => false,
+        }
+    }
+}
+
 #[async_trait]
 pub trait BalanceTradeFeeUpdatedHandler {
     async fn balance_updated(&self, coin: &MmCoinEnum, new_balance: &BigDecimal);
