@@ -668,15 +668,6 @@ impl MakerSwap {
                     match payment_fut.compat().await {
                         Ok(t) => t,
                         Err(err) => {
-                            if let Some(tx) = err.get_tx() {
-                                broadcast_p2p_tx_msg(
-                                    &self.ctx,
-                                    tx_helper_topic(self.maker_coin.ticker()),
-                                    &tx,
-                                    &self.p2p_privkey,
-                                );
-                            }
-
                             return Ok((Some(MakerSwapCommand::Finish), vec![
                                 MakerSwapEvent::MakerPaymentTransactionFailed(
                                     ERRL!("{}", err.get_plain_text_format()).into(),

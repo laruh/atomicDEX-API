@@ -1025,15 +1025,6 @@ impl TakerSwap {
         let transaction = match fee_tx {
             Ok(t) => t,
             Err(err) => {
-                if let Some(tx) = err.get_tx() {
-                    broadcast_p2p_tx_msg(
-                        &self.ctx,
-                        tx_helper_topic(self.taker_coin.ticker()),
-                        &tx,
-                        &self.p2p_privkey,
-                    );
-                }
-
                 return Ok((Some(TakerSwapCommand::Finish), vec![
                     TakerSwapEvent::TakerFeeSendFailed(ERRL!("{}", err.get_plain_text_format()).into()),
                 ]));
@@ -1180,15 +1171,6 @@ impl TakerSwap {
                     match payment_fut.compat().await {
                         Ok(t) => t,
                         Err(err) => {
-                            if let Some(tx) = err.get_tx() {
-                                broadcast_p2p_tx_msg(
-                                    &self.ctx,
-                                    tx_helper_topic(self.taker_coin.ticker()),
-                                    &tx,
-                                    &self.p2p_privkey,
-                                );
-                            }
-
                             return Ok((Some(TakerSwapCommand::Finish), vec![
                                 TakerSwapEvent::TakerPaymentTransactionFailed(
                                     ERRL!("{}", err.get_plain_text_format()).into(),
@@ -1255,15 +1237,6 @@ impl TakerSwap {
         let tx = match f.compat().await {
             Ok(t) => t,
             Err(err) => {
-                if let Some(tx) = err.get_tx() {
-                    broadcast_p2p_tx_msg(
-                        &self.ctx,
-                        tx_helper_topic(self.taker_coin.ticker()),
-                        &tx,
-                        &self.p2p_privkey,
-                    );
-                }
-
                 return Ok((Some(TakerSwapCommand::RefundTakerPayment), vec![
                     TakerSwapEvent::TakerPaymentWaitForSpendFailed(err.get_plain_text_format().into()),
                     TakerSwapEvent::TakerPaymentWaitRefundStarted {
