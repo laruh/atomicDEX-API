@@ -534,7 +534,6 @@ impl Filter for Platform {
     // Watches for any transactions that spend this output on-chain
     fn register_output(&self, output: WatchedOutput) -> Option<(usize, Transaction)> {
         self.add_output(output.clone());
-
         let block_hash = match output.block_hash {
             Some(h) => H256Json::from(h.as_hash().into_inner()),
             None => return None,
@@ -544,29 +543,20 @@ impl Filter for Platform {
         // the filter interface which includes register_output and register_tx should be used for electrum clients only,
         // this is the reason for initializing the filter as an option in the start_lightning function as it will be None
         // when implementing lightning for native clients
-        let output_spend_info = tokio::task::block_in_place(move || {
-            let delay = TRY_LOOP_INTERVAL as u64;
-            ok_or_retry_after_sleep_sync!(
-                self.rpc_client()
-                    .find_output_spend(
-                        H256::from(output.outpoint.txid.as_hash().into_inner()),
-                        output.script_pubkey.as_ref(),
-                        output.outpoint.index.into(),
-                        BlockHashOrHeight::Hash(block_hash),
-                    )
-                    .wait(),
-                delay
-            )
-        });
+        let output_spend_fut = self.rpc_client().find_output_spend(
+            H256::from(output.outpoint.txid.as_hash().into_inner()),
+            output.script_pubkey.as_ref(),
+            output.outpoint.index.into(),
+            BlockHashOrHeight::Hash(block_hash),
+        );
+        let maybe_output_spend_res =
+            tokio::task::block_in_place(move || output_spend_fut.wait()).error_log_passthrough();
 
-        if let Some(info) = output_spend_info {
-            match Transaction::try_from(info.spending_tx) {
-                Ok(tx) => Some((info.input_index, tx)),
-                Err(e) => {
-                    error!("Can't convert transaction error: {}", e.to_string());
-                    return None;
-                },
-            };
+        if let Ok(Some(spent_output_info)) = maybe_output_spend_res {
+            match Transaction::try_from(spent_output_info.spending_tx) {
+                Ok(spending_tx) => return Some((spent_output_info.input_index, spending_tx)),
+                Err(e) => error!("Can't convert transaction error: {}", e.to_string()),
+            }
         }
 
         None
