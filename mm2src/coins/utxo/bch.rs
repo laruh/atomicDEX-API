@@ -20,7 +20,7 @@ use serde_json::{self as json, Value as Json};
 use serialization::{deserialize, CoinVariant};
 use std::sync::MutexGuard;
 
-pub type BchUnspentsMap = HashMap<Address, BchUnspents>;
+pub type BchUnspentMap = HashMap<Address, BchUnspents>;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BchActivationRequest {
@@ -314,17 +314,16 @@ impl BchCoin {
         &self,
         address: &Address,
     ) -> UtxoRpcResult<(BchUnspents, RecentlySpentOutPointsGuard<'_>)> {
-        let (all_unspents, recently_spent) = utxo_common::get_unspent_ordered_list(self, address).await?;
-        let result = self.utxos_into_bch_unspents(all_unspents).await?;
-
-        Ok((result, recently_spent))
+        let (bch_unspent_map, recently_spent) = self.bch_unspents_map_for_spend(vec![address.clone()]).await?;
+        let bch_unspents = try_get_unspent_list(address, bch_unspent_map, "bch_unspents_map_for_spend")?;
+        Ok((bch_unspents, recently_spent))
     }
 
     /// Locks recently spent cache to safely return UTXOs for spending
     pub async fn bch_unspents_map_for_spend(
         &self,
         addresses: Vec<Address>,
-    ) -> UtxoRpcResult<(BchUnspentsMap, RecentlySpentOutPointsGuard<'_>)> {
+    ) -> UtxoRpcResult<(BchUnspentMap, RecentlySpentOutPointsGuard<'_>)> {
         let (all_unspents, recently_spent) = utxo_common::get_unspent_ordered_map(self, addresses).await?;
         // Get an iterator of futures: `Future<Output=UtxoRpcResult<(Address, BchUnspents)>>`
         let fut_it = all_unspents.into_iter().map(|(address, unspents)| {
@@ -736,14 +735,6 @@ impl UtxoTxGenerationOps for BchCoin {
 #[async_trait]
 #[cfg_attr(test, mockable)]
 impl ListUtxoOps for BchCoin {
-    async fn get_unspent_ordered_list(
-        &self,
-        address: &Address,
-    ) -> UtxoRpcResult<(Vec<UnspentInfo>, RecentlySpentOutPointsGuard<'_>)> {
-        let (bch_unspents, recently_spent) = self.bch_unspents_for_spend(address).await?;
-        Ok((bch_unspents.standard, recently_spent))
-    }
-
     async fn get_unspent_ordered_map(
         &self,
         addresses: Vec<Address>,

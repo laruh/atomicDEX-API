@@ -1,4 +1,4 @@
-use crate::utxo::rpc_clients::{UnspentInfo, UnspentMap, UtxoRpcClientEnum, UtxoRpcClientOps, UtxoRpcError, UtxoRpcFut,
+use crate::utxo::rpc_clients::{UnspentMap, UtxoRpcClientEnum, UtxoRpcClientOps, UtxoRpcError, UtxoRpcFut,
                                UtxoRpcResult};
 use crate::utxo::utxo_builder::{UtxoCoinBuilderCommonOps, UtxoCoinWithIguanaPrivKeyBuilder,
                                 UtxoFieldsWithIguanaPrivKeyBuilder};
@@ -1322,16 +1322,12 @@ impl UtxoTxBroadcastOps for ZCoin {
     }
 }
 
+/// Please note `ZCoin` is not assumed to work with transparent UTXOs.
+/// Remove implementation of the `ListUtxoOps` trait for `ZCoin`
+/// when [`ZCoin::preimage_trade_fee_required_to_send_outputs`] is refactored.
 #[async_trait]
 #[cfg_attr(test, mockable)]
 impl ListUtxoOps for ZCoin {
-    async fn get_unspent_ordered_list(
-        &self,
-        address: &Address,
-    ) -> UtxoRpcResult<(Vec<UnspentInfo>, RecentlySpentOutPointsGuard<'_>)> {
-        utxo_common::get_unspent_ordered_list(self, address).await
-    }
-
     async fn get_unspent_ordered_map(
         &self,
         addresses: Vec<Address>,

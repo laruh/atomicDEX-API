@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use bigdecimal::BigDecimal;
 use chain::{BlockHeader, BlockHeaderBits, BlockHeaderNonce, OutPoint, Transaction as UtxoTx};
 use common::custom_futures::{select_ok_sequential, FutureTimerExt};
-use common::custom_iter::TryIntoGroupMap;
+use common::custom_iter::{CollectInto, TryIntoGroupMap};
 use common::executor::{spawn, Timer};
 use common::jsonrpc_client::{BatchRequest, JsonRpcBatchResponse, JsonRpcClient, JsonRpcError, JsonRpcErrorType,
                              JsonRpcId, JsonRpcMultiClient, JsonRpcRemoteAddr, JsonRpcRequest, JsonRpcRequestEnum,
@@ -747,26 +747,31 @@ impl UtxoRpcClientOps for NativeClient {
     }
 
     fn display_balances(&self, addresses: Vec<Address>, decimals: u8) -> UtxoRpcFut<Vec<(Address, BigDecimal)>> {
-        Box::new(
-            self.list_unspent_group(addresses.clone(), decimals)
-                .map(move |mut unspent_map| {
-                    addresses
-                        .into_iter()
-                        .map(|address| {
-                            // If `balances` doesn't contain `address`, there are no unspents related to the address.
-                            // Consider the balance of that address equal to 0.
-                            let balance = unspent_map
-                                .remove(&address)
-                                .unwrap_or_default()
-                                .into_iter()
-                                .fold(BigDecimal::from(0), |sum, unspent| {
-                                    sum + big_decimal_from_sat_unsigned(unspent.value, decimals)
-                                });
-                            (address, balance)
-                        })
-                        .collect()
-                }),
-        )
+        fn address_balance_from_unspent_map(address: &Address, unspent_map: &UnspentMap, decimals: u8) -> BigDecimal {
+            let unspents = match unspent_map.get(address) {
+                Some(unspents) => unspents,
+                // If `balances` doesn't contain `address`, there are no unspents related to the address.
+                // Consider the balance of that address equal to 0.
+                None => return BigDecimal::from(0),
+            };
+            unspents.iter().fold(BigDecimal::from(0), |sum, unspent| {
+                sum + big_decimal_from_sat_unsigned(unspent.value, decimals)
+            })
+        }
+
+        let this = self.clone();
+        let fut = async move {
+            let unspent_map = this.list_unspent_group(addresses.clone(), decimals).compat().await?;
+            let balances = addresses
+                .into_iter()
+                .map(|address| {
+                    let balance = address_balance_from_unspent_map(&address, &unspent_map, decimals);
+                    (address, balance)
+                })
+                .collect();
+            Ok(balances)
+        };
+        Box::new(fut.boxed().compat())
     }
 
     fn estimate_fee_sat(
@@ -1269,6 +1274,13 @@ pub struct ElectrumTxHistoryItem {
 pub struct ElectrumBalance {
     pub(crate) confirmed: i128,
     pub(crate) unconfirmed: i128,
+}
+
+impl ElectrumBalance {
+    pub fn to_big_decimal(&self, decimals: u8) -> BigDecimal {
+        let balance_sat = BigInt::from(self.confirmed) + BigInt::from(self.unconfirmed);
+        BigDecimal::from(balance_sat) / BigDecimal::from(10u64.pow(decimals as u32))
+    }
 }
 
 fn sha_256(input: &[u8]) -> Vec<u8> {
@@ -1904,33 +1916,22 @@ impl UtxoRpcClientOps for ElectrumClient {
                 hex::encode(script_hash)
             })
             .collect();
-        let fut = self
-            .scripthash_list_unspent_batch(script_hashes)
-            .map_to_mm_fut(UtxoRpcError::from)
-            .map(move |unspents| {
-                addresses
-                    .into_iter()
-                    // `scripthash_list_unspent_batch` returns `ScriptHashUnspents` elements in the same order in which they were requested.
-                    // So we can zip `addresses` and `unspents` into one iterator.
-                    .zip(unspents)
-                    // Map `(Address, Vec<ElectrumUnspent>)` pairs into `(Address, Vec<UnspentInfo>)`.
-                    .map(|(address, electrum_unspents)| {
-                        let unspents: Vec<_> = electrum_unspents
-                            .into_iter()
-                            .map(|electrum_unspent| UnspentInfo {
-                                outpoint: OutPoint {
-                                    hash: electrum_unspent.tx_hash.reversed().into(),
-                                    index: electrum_unspent.tx_pos,
-                                },
-                                value: electrum_unspent.value,
-                                height: electrum_unspent.height,
-                            })
-                            .collect();
-                        (address, unspents)
-                    })
-                    .collect()
-            });
-        Box::new(fut)
+
+        let this = self.clone();
+        let fut = async move {
+            let unspents = this.scripthash_list_unspent_batch(script_hashes).compat().await?;
+
+            let unspent_map = addresses
+                .into_iter()
+                // `scripthash_list_unspent_batch` returns `ScriptHashUnspents` elements in the same order in which they were requested.
+                // So we can zip `addresses` and `unspents` into one iterator.
+                .zip(unspents)
+                // Map `(Address, Vec<ElectrumUnspent>)` pairs into `(Address, Vec<UnspentInfo>)`.
+                .map(|(address, electrum_unspents)| (address, electrum_unspents.collect_into()))
+                .collect();
+            Ok(unspent_map)
+        };
+        Box::new(fut.boxed().compat())
     }
 
     fn send_transaction(&self, tx: &UtxoTx) -> UtxoRpcFut<H256Json> {
@@ -1990,35 +1991,32 @@ impl UtxoRpcClientOps for ElectrumClient {
     fn display_balance(&self, address: Address, decimals: u8) -> RpcRes<BigDecimal> {
         let hash = electrum_script_hash(&output_script(&address, ScriptType::P2PKH));
         let hash_str = hex::encode(hash);
-        Box::new(self.scripthash_get_balance(&hash_str).map(move |result| {
-            let balance_sat = BigInt::from(result.confirmed) + BigInt::from(result.unconfirmed);
-            BigDecimal::from(balance_sat) / BigDecimal::from(10u64.pow(decimals as u32))
-        }))
+        Box::new(
+            self.scripthash_get_balance(&hash_str)
+                .map(move |electrum_balance| electrum_balance.to_big_decimal(decimals)),
+        )
     }
 
     fn display_balances(&self, addresses: Vec<Address>, decimals: u8) -> UtxoRpcFut<Vec<(Address, BigDecimal)>> {
-        let hashes = addresses.iter().map(|address| {
-            let hash = electrum_script_hash(&output_script(address, ScriptType::P2PKH));
-            hex::encode(hash)
-        });
-        Box::new(
-            self.scripthash_get_balances(hashes)
-                .map(move |results| {
-                    results
-                        .into_iter()
-                        // `scripthash_get_balances` returns `ElectrumBalance` elements in the same order in which they were requested.
-                        // So we can zip `addresses` and the balances into one iterator.
-                        .zip(addresses)
-                        .map(|(result, address)| {
-                            let balance_sat = BigInt::from(result.confirmed) + BigInt::from(result.unconfirmed);
-                            let balance_dec =
-                                BigDecimal::from(balance_sat) / BigDecimal::from(10u64.pow(decimals as u32));
-                            (address, balance_dec)
-                        })
-                        .collect()
-                })
-                .map_to_mm_fut(UtxoRpcError::from),
-        )
+        let this = self.clone();
+        let fut = async move {
+            let hashes = addresses.iter().map(|address| {
+                let hash = electrum_script_hash(&output_script(address, ScriptType::P2PKH));
+                hex::encode(hash)
+            });
+
+            let electrum_balances = this.scripthash_get_balances(hashes).compat().await?;
+            let balances = electrum_balances
+                .into_iter()
+                // `scripthash_get_balances` returns `ElectrumBalance` elements in the same order in which they were requested.
+                // So we can zip `addresses` and the balances into one iterator.
+                .zip(addresses)
+                .map(|(electrum_balance, address)| (address, electrum_balance.to_big_decimal(decimals)))
+                .collect();
+            Ok(balances)
+        };
+
+        Box::new(fut.boxed().compat())
     }
 
     fn estimate_fee_sat(

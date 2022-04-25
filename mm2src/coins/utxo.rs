@@ -776,7 +776,7 @@ impl MatureUnspentList {
 #[async_trait]
 #[cfg_attr(test, mockable)]
 pub trait UtxoCommonOps:
-    AsRef<UtxoCoinFields> + UtxoTxGenerationOps + UtxoTxBroadcastOps + ListUtxoOps + Clone + Send + Sync + 'static
+    AsRef<UtxoCoinFields> + UtxoTxGenerationOps + UtxoTxBroadcastOps + Clone + Send + Sync + 'static
 {
     async fn get_htlc_spend_fee(&self, tx_size: u64) -> UtxoRpcResult<u64>;
 
@@ -860,13 +860,18 @@ pub trait UtxoCommonOps:
 #[async_trait]
 #[cfg_attr(test, mockable)]
 pub trait ListUtxoOps {
-    /// Returns available unspents in ascending order + `RecentlySpentOutPoints` MutexGuard for further interaction (e.g. to add new transaction to it).
+    /// Returns available unspents in ascending order
+    /// + `RecentlySpentOutPoints` MutexGuard for further interaction (e.g. to add new transaction to it).
     /// The function uses either [`ListUtxoOps::get_all_unspent_ordered_map`] or [`ListUtxoOps::get_mature_unspent_ordered_map`]
     /// depending on the coin configuration.
     async fn get_unspent_ordered_list(
         &self,
         address: &Address,
-    ) -> UtxoRpcResult<(Vec<UnspentInfo>, RecentlySpentOutPointsGuard<'_>)>;
+    ) -> UtxoRpcResult<(Vec<UnspentInfo>, RecentlySpentOutPointsGuard<'_>)> {
+        let (unspent_map, recently_spent) = self.get_unspent_ordered_map(vec![address.clone()]).await?;
+        let unspent_list = try_get_unspent_list(address, unspent_map, "get_unspent_ordered_map")?;
+        Ok((unspent_list, recently_spent))
+    }
 
     /// Returns available unspents in ascending order for every given `addresses`
     /// + `RecentlySpentOutPoints` MutexGuard for further interaction (e.g. to add new transaction to it).
@@ -883,19 +888,35 @@ pub trait ListUtxoOps {
     /// # Important
     ///
     /// The function doesn't check if the unspents are mature or immature.
-    /// Consider using [`ListUtxoOps::get_unspent_ordered_list`] or [`ListUtxoOps::get_unspent_ordered_map`] instead.
+    /// Consider using [`ListUtxoOps::get_unspent_ordered_map`] instead.
     async fn get_all_unspent_ordered_map(
         &self,
         addresses: Vec<Address>,
     ) -> UtxoRpcResult<(UnspentMap, RecentlySpentOutPointsGuard<'_>)>;
+
+    /// Returns available mature and immature unspents in ascending order
+    /// + `RecentlySpentOutPoints` MutexGuard for further interaction (e.g. to add new transaction to it).
+    ///
+    /// # Important
+    ///
+    /// The function may request extra data using RPC to check each unspent output whether it's mature or not.
+    /// It may be overhead in some cases, so consider using [`ListUtxoOps::get_unspent_ordered_list`] instead.
+    async fn get_mature_unspent_ordered_list(
+        &self,
+        address: &Address,
+    ) -> UtxoRpcResult<(MatureUnspentList, RecentlySpentOutPointsGuard<'_>)> {
+        let (unspent_map, recently_spent) = self.get_mature_unspent_ordered_map(vec![address.clone()]).await?;
+        let unspent_list = try_get_unspent_list(address, unspent_map, "get_mature_unspent_ordered_map")?;
+        Ok((unspent_list, recently_spent))
+    }
 
     /// Returns available mature and immature unspents in ascending order for every given `addresses`
     /// + `RecentlySpentOutPoints` MutexGuard for further interaction (e.g. to add new transaction to it).
     ///
     /// # Important
     ///
-    /// The function may request an extra data using RPC to check each unspent output whether it's mature or not.
-    /// It may be overhead in some cases, so consider using [`ListUtxoOps::get_unspent_ordered_list`] or [`ListUtxoOps::get_unspent_ordered_map`] instead.
+    /// The function may request extra data using RPC to check each unspent output whether it's mature or not.
+    /// It may be overhead in some cases, so consider using [`ListUtxoOps::get_unspent_ordered_map`] instead.
     async fn get_mature_unspent_ordered_map(
         &self,
         addresses: Vec<Address>,
@@ -1148,9 +1169,9 @@ impl RpcTransportEventHandler for ElectrumProtoVerifier {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct UtxoMergeParams {
     pub merge_at: usize,
-    #[serde(default = "ten_f64")]
+    #[serde(default = "common::ten_f64")]
     pub check_every: f64,
-    #[serde(default = "one_hundred")]
+    #[serde(default = "common::one_hundred")]
     pub max_merge_at_once: usize,
 }
 
@@ -1530,7 +1551,7 @@ pub fn sat_from_big_decimal(amount: &BigDecimal, decimals: u8) -> NumConversResu
 
 async fn send_outputs_from_my_address_impl<T>(coin: T, outputs: Vec<TransactionOutput>) -> Result<UtxoTx, String>
 where
-    T: UtxoCommonOps,
+    T: UtxoCommonOps + ListUtxoOps,
 {
     let my_address = try_s!(coin.as_ref().derivation_method.iguana_or_err());
     let (unspents, recently_sent_txs) = try_s!(coin.get_unspent_ordered_list(my_address).await);
@@ -1639,6 +1660,17 @@ pub fn address_by_conf_and_pubkey_str(
     address.display_address()
 }
 
+pub(crate) fn try_get_unspent_list<List>(
+    address: &Address,
+    mut unspent_map: HashMap<Address, List>,
+    unspent_map_returned_by: &str,
+) -> UtxoRpcResult<List> {
+    unspent_map.remove(address).or_mm_err(|| {
+        let error = format!("{:?} should have returned '{}'", unspent_map_returned_by, address);
+        UtxoRpcError::Internal(error)
+    })
+}
+
 fn parse_hex_encoded_u32(hex_encoded: &str) -> Result<u32, MmError<String>> {
     let hex_encoded = hex_encoded.strip_prefix("0x").unwrap_or(hex_encoded);
     let bytes = hex::decode(hex_encoded).map_to_mm(|e| e.to_string())?;
@@ -1648,10 +1680,6 @@ fn parse_hex_encoded_u32(hex_encoded: &str) -> Result<u32, MmError<String>> {
         .map_to_mm(|e: TryFromSliceError| e.to_string())?;
     Ok(u32::from_be_bytes(be_bytes))
 }
-
-fn ten_f64() -> f64 { 10. }
-
-fn one_hundred() -> usize { 100 }
 
 #[test]
 fn test_parse_hex_encoded_u32() {

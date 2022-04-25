@@ -7,6 +7,7 @@ use crate::hd_wallet_storage::{HDWalletCoinWithStorageOps, HDWalletStorageResult
 use crate::rpc_command::init_withdraw::WithdrawTaskHandle;
 use crate::utxo::rpc_clients::{electrum_script_hash, BlockHashOrHeight, UnspentInfo, UnspentMap, UtxoRpcClientEnum,
                                UtxoRpcClientOps, UtxoRpcResult};
+use crate::utxo::tx_cache::TxCacheResult;
 use crate::utxo::utxo_withdraw::{InitUtxoWithdraw, StandardUtxoWithdraw, UtxoWithdraw};
 use crate::{CanRefundHtlc, CoinBalance, CoinWithDerivationMethod, GetWithdrawSenderAddress, HDAddressId,
             RawTransactionError, RawTransactionRequest, RawTransactionRes, TradePreimageValue, TxFeeDetails,
@@ -386,14 +387,10 @@ pub async fn load_hd_accounts_from_storage(
 /// Requests balance of the given `address`.
 pub async fn address_balance<T>(coin: &T, address: &Address) -> BalanceResult<CoinBalance>
 where
-    T: UtxoCommonOps + MarketCoinOps,
+    T: UtxoCommonOps + ListUtxoOps + MarketCoinOps,
 {
     if coin.as_ref().check_utxo_maturity {
-        let (mut unspents_map, _) = coin.get_mature_unspent_ordered_map(vec![address.clone()]).await?;
-        let unspents = unspents_map.remove(address).or_mm_err(|| {
-            let error = format!("'get_mature_unspent_ordered_map' should have returned '{}'", address);
-            BalanceError::Internal(error)
-        })?;
+        let (unspents, _) = coin.get_mature_unspent_ordered_list(address).await?;
         return Ok(unspents.to_coin_balance(coin.as_ref().decimals));
     }
 
@@ -414,7 +411,7 @@ where
 /// The pairs `(Address, CoinBalance)` are guaranteed to be in the same order in which they were requested.
 pub async fn addresses_balances<T>(coin: &T, addresses: Vec<Address>) -> BalanceResult<Vec<(Address, CoinBalance)>>
 where
-    T: UtxoCommonOps + MarketCoinOps,
+    T: UtxoCommonOps + ListUtxoOps + MarketCoinOps,
 {
     if coin.as_ref().check_utxo_maturity {
         let (unspents_map, _) = coin.get_mature_unspent_ordered_map(addresses.clone()).await?;
@@ -588,7 +585,10 @@ pub async fn get_current_mtp(coin: &UtxoCoinFields, coin_variant: CoinVariant) -
         .await
 }
 
-pub fn send_outputs_from_my_address<T: UtxoCommonOps>(coin: T, outputs: Vec<TransactionOutput>) -> TransactionFut {
+pub fn send_outputs_from_my_address<T>(coin: T, outputs: Vec<TransactionOutput>) -> TransactionFut
+where
+    T: UtxoCommonOps + ListUtxoOps,
+{
     let fut = send_outputs_from_my_address_impl(coin, outputs);
     Box::new(fut.boxed().compat().map(|tx| tx.into()))
 }
@@ -1032,7 +1032,10 @@ pub async fn p2sh_spending_tx<T: UtxoCommonOps>(
     })
 }
 
-pub fn send_taker_fee<T: UtxoCommonOps>(coin: T, fee_pub_key: &[u8], amount: BigDecimal) -> TransactionFut {
+pub fn send_taker_fee<T>(coin: T, fee_pub_key: &[u8], amount: BigDecimal) -> TransactionFut
+where
+    T: UtxoCommonOps + ListUtxoOps,
+{
     let address = try_fus!(address_from_raw_pubkey(
         fee_pub_key,
         coin.as_ref().conf.pub_addr_prefix,
@@ -1049,14 +1052,17 @@ pub fn send_taker_fee<T: UtxoCommonOps>(coin: T, fee_pub_key: &[u8], amount: Big
     send_outputs_from_my_address(coin, vec![output])
 }
 
-pub fn send_maker_payment<T: UtxoCommonOps>(
+pub fn send_maker_payment<T>(
     coin: T,
     time_lock: u32,
     maker_pub: &[u8],
     taker_pub: &[u8],
     secret_hash: &[u8],
     amount: BigDecimal,
-) -> TransactionFut {
+) -> TransactionFut
+where
+    T: UtxoCommonOps + ListUtxoOps,
+{
     let SwapPaymentOutputsResult {
         payment_address,
         outputs,
@@ -1083,14 +1089,17 @@ pub fn send_maker_payment<T: UtxoCommonOps>(
     Box::new(send_fut)
 }
 
-pub fn send_taker_payment<T: UtxoCommonOps>(
+pub fn send_taker_payment<T>(
     coin: T,
     time_lock: u32,
     taker_pub: &[u8],
     maker_pub: &[u8],
     secret_hash: &[u8],
     amount: BigDecimal,
-) -> TransactionFut {
+) -> TransactionFut
+where
+    T: UtxoCommonOps + ListUtxoOps,
+{
     let SwapPaymentOutputsResult {
         payment_address,
         outputs,
@@ -1666,7 +1675,7 @@ pub fn my_address<T: UtxoCommonOps>(coin: &T) -> Result<String, String> {
 
 pub fn my_balance<T>(coin: T) -> BalanceFut<CoinBalance>
 where
-    T: UtxoCommonOps + MarketCoinOps,
+    T: UtxoCommonOps + ListUtxoOps + MarketCoinOps,
 {
     let my_address = try_f!(coin
         .as_ref()
@@ -1800,7 +1809,7 @@ pub async fn get_raw_transaction(coin: &UtxoCoinFields, req: RawTransactionReque
 
 pub async fn withdraw<T>(coin: T, req: WithdrawRequest) -> WithdrawResult
 where
-    T: UtxoCommonOps + MarketCoinOps,
+    T: UtxoCommonOps + ListUtxoOps + MarketCoinOps,
 {
     StandardUtxoWithdraw::new(coin, req)?.build().await
 }
@@ -1813,6 +1822,7 @@ pub async fn init_withdraw<T>(
 ) -> WithdrawResult
 where
     T: UtxoCommonOps
+        + ListUtxoOps
         + UtxoSignerOps
         + CoinWithDerivationMethod
         + GetWithdrawSenderAddress<Address = Address, Pubkey = Public>,
@@ -2559,13 +2569,16 @@ pub fn get_trade_fee<T: UtxoCommonOps>(coin: T) -> Box<dyn Future<Item = TradeFe
 ///
 /// To sum up, `get_sender_trade_fee(TradePreimageValue::Exact(9000)) > get_sender_trade_fee(TradePreimageValue::Exact(10000))`.
 /// So we should always return a fee as if a transaction includes the change output.
-pub async fn preimage_trade_fee_required_to_send_outputs<T: UtxoCommonOps>(
+pub async fn preimage_trade_fee_required_to_send_outputs<T>(
     coin: &T,
     outputs: Vec<TransactionOutput>,
     fee_policy: FeePolicy,
     gas_fee: Option<u64>,
     stage: &FeeApproxStage,
-) -> TradePreimageResult<BigDecimal> {
+) -> TradePreimageResult<BigDecimal>
+where
+    T: UtxoCommonOps + ListUtxoOps,
+{
     let ticker = coin.as_ref().conf.ticker.clone();
     let decimals = coin.as_ref().decimals;
     let tx_fee = coin.get_tx_fee().await?;
@@ -2754,10 +2767,13 @@ pub fn is_coin_protocol_supported<T: UtxoCommonOps>(coin: &T, info: &Option<Vec<
 /// [`ListUtxoOps::get_mature_unspent_ordered_map`] implementation.
 /// Returns available mature and immature unspents in ascending order for every given `addresses`
 /// + `RecentlySpentOutPoints` MutexGuard for further interaction (e.g. to add new transaction to it).
-pub async fn get_mature_unspent_ordered_map<T: UtxoCommonOps>(
+pub async fn get_mature_unspent_ordered_map<T>(
     coin: &T,
     addresses: Vec<Address>,
-) -> UtxoRpcResult<(MatureUnspentMap, RecentlySpentOutPointsGuard<'_>)> {
+) -> UtxoRpcResult<(MatureUnspentMap, RecentlySpentOutPointsGuard<'_>)>
+where
+    T: UtxoCommonOps + ListUtxoOps,
+{
     let (unspents_map, recently_spent) = coin.get_all_unspent_ordered_map(addresses).await?;
     // Get an iterator of futures: `Future<Output=UtxoRpcResult<(Address, MatureUnspentList)>>`
     let fut_it = unspents_map.into_iter().map(|(address, unspents)| {
@@ -2876,6 +2892,33 @@ pub async fn get_verbose_transactions_from_cache_or_rpc(
     coin: &UtxoCoinFields,
     tx_ids: HashSet<H256Json>,
 ) -> UtxoRpcResult<HashMap<H256Json, VerboseTransactionFrom>> {
+    /// Determines whether the transaction is needed to be requested through RPC or not.
+    /// Puts the inner `RpcTransaction` transaction into `result_map` if it has been loaded successfully,
+    /// otherwise puts `txid` into `to_request`.
+    fn on_cached_transaction_result(
+        result_map: &mut HashMap<H256Json, VerboseTransactionFrom>,
+        to_request: &mut Vec<H256Json>,
+        txid: H256Json,
+        res: TxCacheResult<Option<RpcTransaction>>,
+    ) {
+        match res {
+            Ok(Some(tx)) => {
+                result_map.insert(txid, VerboseTransactionFrom::Cache(tx));
+            },
+            // txid not found
+            Ok(None) => {
+                to_request.push(txid);
+            },
+            Err(err) => {
+                error!(
+                    "Error loading the {:?} transaction: {:?}. Trying to request tx using RPC client",
+                    err, txid
+                );
+                to_request.push(txid);
+            },
+        }
+    }
+
     let mut result_map = HashMap::with_capacity(tx_ids.len());
     let mut to_request = Vec::with_capacity(tx_ids.len());
 
@@ -2884,19 +2927,7 @@ pub async fn get_verbose_transactions_from_cache_or_rpc(
             tx_cache::load_transactions_from_cache_concurrently(tx_cache_path, tx_ids.into_iter())
                 .await
                 .into_iter()
-                .for_each(|(txid, res)| match res {
-                    Ok(Some(tx)) => {
-                        result_map.insert(txid, VerboseTransactionFrom::Cache(tx));
-                    },
-                    // txid not found
-                    Ok(None) => {
-                        to_request.push(txid);
-                    },
-                    Err(err) => {
-                        log!("Error " [err] " loading the " [txid] " transaction. Trying request tx using Rpc client");
-                        to_request.push(txid);
-                    },
-                });
+                .for_each(|(txid, res)| on_cached_transaction_result(&mut result_map, &mut to_request, txid, res));
         },
         // the coin doesn't support TX local cache, don't try to load from cache
         None => to_request = tx_ids.into_iter().collect(),
@@ -3279,25 +3310,16 @@ pub fn dex_fee_script(uuid: [u8; 16], time_lock: u32, watcher_pub: &Public, send
         .into_script()
 }
 
-pub async fn get_unspent_ordered_list<'a, T: ListUtxoOps>(
-    coin: &'a T,
-    address: &Address,
-) -> UtxoRpcResult<(Vec<UnspentInfo>, RecentlySpentOutPointsGuard<'a>)> {
-    let (mut unspent_map, recently_spent) = coin.get_unspent_ordered_map(vec![address.clone()]).await?;
-    let unspents = unspent_map.remove(address).or_mm_err(|| {
-        let error = format!("'get_unspent_ordered_map' should have returned '{}'", address);
-        UtxoRpcError::Internal(error)
-    })?;
-    Ok((unspents, recently_spent))
-}
-
 /// [`ListUtxoOps::get_unspent_ordered_map`] implementation.
 /// Returns available unspents in ascending order + `RecentlySpentOutPoints` MutexGuard for further interaction
 /// (e.g. to add new transaction to it).
-pub async fn get_unspent_ordered_map<T: UtxoCommonOps>(
+pub async fn get_unspent_ordered_map<T>(
     coin: &T,
     addresses: Vec<Address>,
-) -> UtxoRpcResult<(UnspentMap, RecentlySpentOutPointsGuard<'_>)> {
+) -> UtxoRpcResult<(UnspentMap, RecentlySpentOutPointsGuard<'_>)>
+where
+    T: UtxoCommonOps + ListUtxoOps,
+{
     if coin.as_ref().check_utxo_maturity {
         coin.get_mature_unspent_ordered_map(addresses)
             .await
@@ -3516,13 +3538,15 @@ pub async fn block_header_utxo_loop<T: UtxoCommonOps>(weak: UtxoWeak, constructo
     }
 }
 
-pub async fn merge_utxo_loop<T: UtxoCommonOps>(
+pub async fn merge_utxo_loop<T>(
     weak: UtxoWeak,
     merge_at: usize,
     check_every: f64,
     max_merge_at_once: usize,
     constructor: impl Fn(UtxoArc) -> T,
-) {
+) where
+    T: UtxoCommonOps + ListUtxoOps,
+{
     loop {
         Timer::sleep(check_every).await;
 

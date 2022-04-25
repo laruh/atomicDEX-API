@@ -1,5 +1,28 @@
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::iter::FromIterator;
+
+pub trait CollectInto {
+    /// Collects `FromB` from an `IntoIterator<Item=A>` given the fact that `A: Into<B>`.
+    ///
+    /// # Usage
+    ///
+    /// ```rust
+    /// let actual: Vec<String> = vec!["foo", "bar"].collect_into();
+    /// let expected = vec!["foo".to_owned(), "bar".to_owned()];
+    /// assert_eq!(actual, expected);
+    /// ```
+    fn collect_into<A, B, FromB>(self) -> FromB
+    where
+        Self: IntoIterator<Item = A> + Sized,
+        A: Into<B>,
+        FromB: FromIterator<B>,
+    {
+        self.into_iter().map(A::into).collect()
+    }
+}
+
+impl<T> CollectInto for T {}
 
 pub trait TryIntoGroupMap {
     /// An iterator method that unwraps the given `Result<(Key, Value), Err>` items yielded by the input iterator
@@ -45,6 +68,13 @@ where
 }
 
 impl<T, A, B, E> TryUnzip<A, B, E> for T where T: Iterator<Item = Result<(A, B), E>> {}
+
+#[test]
+fn test_collect_into() {
+    let actual: Vec<String> = vec!["foo", "bar"].collect_into();
+    let expected = vec!["foo".to_owned(), "bar".to_owned()];
+    assert_eq!(actual, expected);
+}
 
 #[test]
 fn test_try_into_group_map() {

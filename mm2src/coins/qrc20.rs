@@ -2,8 +2,8 @@ use crate::eth::{self, u256_to_big_decimal, wei_from_big_decimal, TryToAddress};
 use crate::qrc20::rpc_clients::{LogEntry, Qrc20ElectrumOps, Qrc20NativeOps, Qrc20RpcOps, TopicFilter, TxReceipt,
                                 ViewContractCallType};
 use crate::utxo::qtum::QtumBasedCoin;
-use crate::utxo::rpc_clients::{ElectrumClient, NativeClient, UnspentInfo, UnspentMap, UtxoRpcClientEnum,
-                               UtxoRpcClientOps, UtxoRpcError, UtxoRpcFut, UtxoRpcResult};
+use crate::utxo::rpc_clients::{ElectrumClient, NativeClient, UnspentMap, UtxoRpcClientEnum, UtxoRpcClientOps,
+                               UtxoRpcError, UtxoRpcFut, UtxoRpcResult};
 use crate::utxo::utxo_builder::{UtxoCoinBuildError, UtxoCoinBuildResult, UtxoCoinBuilderCommonOps,
                                 UtxoCoinWithIguanaPrivKeyBuilder, UtxoFieldsWithIguanaPrivKeyBuilder};
 use crate::utxo::utxo_common::{self, big_decimal_from_sat, check_all_inputs_signed_by_pub, UtxoTxBuilder};
@@ -573,13 +573,6 @@ impl UtxoTxGenerationOps for Qrc20Coin {
 #[async_trait]
 #[cfg_attr(test, mockable)]
 impl ListUtxoOps for Qrc20Coin {
-    async fn get_unspent_ordered_list(
-        &self,
-        address: &Address,
-    ) -> UtxoRpcResult<(Vec<UnspentInfo>, RecentlySpentOutPointsGuard<'_>)> {
-        utxo_common::get_unspent_ordered_list(self, address).await
-    }
-
     async fn get_unspent_ordered_map(
         &self,
         addresses: Vec<Address>,
