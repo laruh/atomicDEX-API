@@ -7,7 +7,6 @@ use crate::hd_wallet_storage::{HDWalletCoinWithStorageOps, HDWalletStorageResult
 use crate::rpc_command::init_withdraw::WithdrawTaskHandle;
 use crate::utxo::rpc_clients::{electrum_script_hash, BlockHashOrHeight, UnspentInfo, UnspentMap, UtxoRpcClientEnum,
                                UtxoRpcClientOps, UtxoRpcResult};
-use crate::utxo::tx_cache::TxCacheResult;
 use crate::utxo::utxo_withdraw::{InitUtxoWithdraw, StandardUtxoWithdraw, UtxoWithdraw};
 use crate::{CanRefundHtlc, CoinBalance, CoinWithDerivationMethod, GetWithdrawSenderAddress, HDAddressId,
             RawTransactionError, RawTransactionRequest, RawTransactionRes, TradePreimageValue, TxFeeDetails,
@@ -2899,7 +2898,7 @@ pub async fn get_verbose_transactions_from_cache_or_rpc(
         result_map: &mut HashMap<H256Json, VerboseTransactionFrom>,
         to_request: &mut Vec<H256Json>,
         txid: H256Json,
-        res: TxCacheResult<Option<RpcTransaction>>,
+        res: tx_cache::TxCacheResult<Option<RpcTransaction>>,
     ) {
         match res {
             Ok(Some(tx)) => {

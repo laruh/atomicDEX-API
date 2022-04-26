@@ -1,4 +1,5 @@
 use super::*;
+use crate::utxo::rpc_clients::UnspentInfo;
 use crate::TxFeeDetails;
 use bigdecimal::Zero;
 use chain::OutPoint;

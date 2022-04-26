@@ -84,7 +84,7 @@ pub mod common_impl {
         let total_addresses_number = hd_account.known_addresses_number(params.chain)?;
 
         let from_address_id = match params.paging_options {
-            PagingOptionsEnum::FromId(from_address_id) => from_address_id,
+            PagingOptionsEnum::FromId(from_address_id) => from_address_id + 1,
             PagingOptionsEnum::PageNumber(page_number) => ((page_number.get() - 1) * params.limit) as u32,
         };
         let to_address_id = std::cmp::min(from_address_id + params.limit as u32, total_addresses_number);

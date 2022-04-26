@@ -3473,13 +3473,13 @@ fn test_account_balance_rpc() {
     };
     assert_eq!(actual, expected);
 
-    // Request a balance of Account#0, internal addresses, starting from idx=1
+    // Request a balance of Account#0, internal addresses, where idx > 0
 
     let params = AccountBalanceParams {
         account_index: 0,
         chain: Bip44Chain::Internal,
         limit: 3,
-        paging_options: PagingOptionsEnum::FromId(1),
+        paging_options: PagingOptionsEnum::FromId(0),
     };
     let actual = block_on(coin.account_balance_rpc(params)).expect("!account_balance_rpc");
     let expected = HDAccountBalanceResponse {
@@ -3491,7 +3491,7 @@ fn test_account_balance_rpc() {
         skipped: 1,
         total: 3,
         total_pages: 1,
-        paging_options: PagingOptionsEnum::FromId(1),
+        paging_options: PagingOptionsEnum::FromId(0),
     };
     assert_eq!(actual, expected);
 
@@ -3539,13 +3539,13 @@ fn test_account_balance_rpc() {
     };
     assert_eq!(actual, expected);
 
-    // Request a balance of Account#1, external addresses, starting from idx=1 (out of bound)
+    // Request a balance of Account#1, external addresses, where idx > 0 (out of bound)
 
     let params = AccountBalanceParams {
         account_index: 1,
         chain: Bip44Chain::Internal,
         limit: 3,
-        paging_options: PagingOptionsEnum::FromId(1),
+        paging_options: PagingOptionsEnum::FromId(0),
     };
     let actual = block_on(coin.account_balance_rpc(params)).expect("!account_balance_rpc");
     let expected = HDAccountBalanceResponse {
@@ -3557,7 +3557,7 @@ fn test_account_balance_rpc() {
         skipped: 1,
         total: 1,
         total_pages: 1,
-        paging_options: PagingOptionsEnum::FromId(1),
+        paging_options: PagingOptionsEnum::FromId(0),
     };
     assert_eq!(actual, expected);
 }
