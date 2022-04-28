@@ -1,10 +1,10 @@
-use crate::utxo::rpc_clients::{UnspentMap, UtxoRpcClientEnum, UtxoRpcClientOps, UtxoRpcError, UtxoRpcFut,
+use crate::utxo::rpc_clients::{UnspentInfo, UtxoRpcClientEnum, UtxoRpcClientOps, UtxoRpcError, UtxoRpcFut,
                                UtxoRpcResult};
 use crate::utxo::utxo_builder::{UtxoCoinBuilderCommonOps, UtxoCoinWithIguanaPrivKeyBuilder,
                                 UtxoFieldsWithIguanaPrivKeyBuilder};
 use crate::utxo::utxo_common::{big_decimal_from_sat_unsigned, payment_script};
 use crate::utxo::{sat_from_big_decimal, utxo_common, ActualTxFee, AdditionalTxData, Address, BroadcastTxErr,
-                  FeePolicy, HistoryUtxoTx, HistoryUtxoTxMap, ListUtxoOps, MatureUnspentMap,
+                  FeePolicy, GetUtxoListOps, HistoryUtxoTx, HistoryUtxoTxMap, MatureUnspentList,
                   RecentlySpentOutPointsGuard, UtxoActivationParams, UtxoAddressFormat, UtxoArc, UtxoCoinFields,
                   UtxoCommonOps, UtxoFeeDetails, UtxoTxBroadcastOps, UtxoTxGenerationOps, UtxoWeak,
                   VerboseTransactionFrom};
@@ -1323,30 +1323,30 @@ impl UtxoTxBroadcastOps for ZCoin {
 }
 
 /// Please note `ZCoin` is not assumed to work with transparent UTXOs.
-/// Remove implementation of the `ListUtxoOps` trait for `ZCoin`
+/// Remove implementation of the `GetUtxoListOps` trait for `ZCoin`
 /// when [`ZCoin::preimage_trade_fee_required_to_send_outputs`] is refactored.
 #[async_trait]
 #[cfg_attr(test, mockable)]
-impl ListUtxoOps for ZCoin {
-    async fn get_unspent_ordered_map(
+impl GetUtxoListOps for ZCoin {
+    async fn get_unspent_ordered_list(
         &self,
-        addresses: Vec<Address>,
-    ) -> UtxoRpcResult<(UnspentMap, RecentlySpentOutPointsGuard<'_>)> {
-        utxo_common::get_unspent_ordered_map(self, addresses).await
+        address: &Address,
+    ) -> UtxoRpcResult<(Vec<UnspentInfo>, RecentlySpentOutPointsGuard<'_>)> {
+        utxo_common::get_unspent_ordered_list(self, address).await
     }
 
-    async fn get_all_unspent_ordered_map(
+    async fn get_all_unspent_ordered_list(
         &self,
-        addresses: Vec<Address>,
-    ) -> UtxoRpcResult<(UnspentMap, RecentlySpentOutPointsGuard<'_>)> {
-        utxo_common::get_all_unspent_ordered_map(self, addresses).await
+        address: &Address,
+    ) -> UtxoRpcResult<(Vec<UnspentInfo>, RecentlySpentOutPointsGuard<'_>)> {
+        utxo_common::get_all_unspent_ordered_list(self, address).await
     }
 
-    async fn get_mature_unspent_ordered_map(
+    async fn get_mature_unspent_ordered_list(
         &self,
-        addresses: Vec<Address>,
-    ) -> UtxoRpcResult<(MatureUnspentMap, RecentlySpentOutPointsGuard<'_>)> {
-        utxo_common::get_mature_unspent_ordered_map(self, addresses).await
+        address: &Address,
+    ) -> UtxoRpcResult<(MatureUnspentList, RecentlySpentOutPointsGuard<'_>)> {
+        utxo_common::get_mature_unspent_ordered_list(self, address).await
     }
 }
 

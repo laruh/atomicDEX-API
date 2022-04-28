@@ -314,28 +314,10 @@ impl BchCoin {
         &self,
         address: &Address,
     ) -> UtxoRpcResult<(BchUnspents, RecentlySpentOutPointsGuard<'_>)> {
-        let (bch_unspent_map, recently_spent) = self.bch_unspents_map_for_spend(vec![address.clone()]).await?;
-        let bch_unspents = try_get_unspent_list(address, bch_unspent_map, "bch_unspents_map_for_spend")?;
-        Ok((bch_unspents, recently_spent))
-    }
+        let (all_unspents, recently_spent) = utxo_common::get_unspent_ordered_list(self, address).await?;
+        let result = self.utxos_into_bch_unspents(all_unspents).await?;
 
-    /// Locks recently spent cache to safely return UTXOs for spending
-    pub async fn bch_unspents_map_for_spend(
-        &self,
-        addresses: Vec<Address>,
-    ) -> UtxoRpcResult<(BchUnspentMap, RecentlySpentOutPointsGuard<'_>)> {
-        let (all_unspents, recently_spent) = utxo_common::get_unspent_ordered_map(self, addresses).await?;
-        // Get an iterator of futures: `Future<Output=UtxoRpcResult<(Address, BchUnspents)>>`
-        let fut_it = all_unspents.into_iter().map(|(address, unspents)| {
-            self.utxos_into_bch_unspents(unspents)
-                .map(move |res| -> UtxoRpcResult<_> {
-                    let bch_unspents = res?;
-                    Ok((address, bch_unspents))
-                })
-        });
-        // Poll the `fut_it` futures concurrently.
-        let bch_unspents_map = futures::future::try_join_all(fut_it).await?.into_iter().collect();
-        Ok((bch_unspents_map, recently_spent))
+        Ok((result, recently_spent))
     }
 
     pub async fn get_token_utxos_for_spend(
@@ -734,37 +716,28 @@ impl UtxoTxGenerationOps for BchCoin {
 
 #[async_trait]
 #[cfg_attr(test, mockable)]
-impl ListUtxoOps for BchCoin {
-    async fn get_unspent_ordered_map(
+impl GetUtxoListOps for BchCoin {
+    async fn get_unspent_ordered_list(
         &self,
-        addresses: Vec<Address>,
-    ) -> UtxoRpcResult<(UnspentMap, RecentlySpentOutPointsGuard<'_>)> {
-        let (bch_unspents_map, recently_spent) = self.bch_unspents_map_for_spend(addresses).await?;
-        let unspents = bch_unspents_map
-            .into_iter()
-            .map(|(address, bch_unspents)| (address, bch_unspents.standard))
-            .collect();
-        Ok((unspents, recently_spent))
+        address: &Address,
+    ) -> UtxoRpcResult<(Vec<UnspentInfo>, RecentlySpentOutPointsGuard<'_>)> {
+        let (bch_unspents, recently_spent) = self.bch_unspents_for_spend(address).await?;
+        Ok((bch_unspents.standard, recently_spent))
     }
 
-    async fn get_all_unspent_ordered_map(
+    async fn get_all_unspent_ordered_list(
         &self,
-        addresses: Vec<Address>,
-    ) -> UtxoRpcResult<(UnspentMap, RecentlySpentOutPointsGuard<'_>)> {
-        utxo_common::get_all_unspent_ordered_map(self, addresses).await
+        address: &Address,
+    ) -> UtxoRpcResult<(Vec<UnspentInfo>, RecentlySpentOutPointsGuard<'_>)> {
+        utxo_common::get_all_unspent_ordered_list(self, address).await
     }
 
-    async fn get_mature_unspent_ordered_map(
+    async fn get_mature_unspent_ordered_list(
         &self,
-        addresses: Vec<Address>,
-    ) -> UtxoRpcResult<(MatureUnspentMap, RecentlySpentOutPointsGuard<'_>)> {
-        let (unspents_map, recently_spent) = utxo_common::get_all_unspent_ordered_map(self, addresses).await?;
-        // Convert `UnspentMap` into `MatureUnspentMap`.
-        let mature_unspents_map = unspents_map
-            .into_iter()
-            .map(|(address, unspents)| (address, MatureUnspentList::new_mature(unspents)))
-            .collect();
-        Ok((mature_unspents_map, recently_spent))
+        address: &Address,
+    ) -> UtxoRpcResult<(MatureUnspentList, RecentlySpentOutPointsGuard<'_>)> {
+        let (unspents, recently_spent) = utxo_common::get_all_unspent_ordered_list(self, address).await?;
+        Ok((MatureUnspentList::new_mature(unspents), recently_spent))
     }
 }
 

@@ -319,7 +319,32 @@ impl UtxoTxGenerationOps for QtumCoin {
 
 #[async_trait]
 #[cfg_attr(test, mockable)]
-impl ListUtxoOps for QtumCoin {
+impl GetUtxoListOps for QtumCoin {
+    async fn get_unspent_ordered_list(
+        &self,
+        address: &Address,
+    ) -> UtxoRpcResult<(Vec<UnspentInfo>, RecentlySpentOutPointsGuard<'_>)> {
+        utxo_common::get_unspent_ordered_list(self, address).await
+    }
+
+    async fn get_all_unspent_ordered_list(
+        &self,
+        address: &Address,
+    ) -> UtxoRpcResult<(Vec<UnspentInfo>, RecentlySpentOutPointsGuard<'_>)> {
+        utxo_common::get_all_unspent_ordered_list(self, address).await
+    }
+
+    async fn get_mature_unspent_ordered_list(
+        &self,
+        address: &Address,
+    ) -> UtxoRpcResult<(MatureUnspentList, RecentlySpentOutPointsGuard<'_>)> {
+        utxo_common::get_mature_unspent_ordered_list(self, address).await
+    }
+}
+
+#[async_trait]
+#[cfg_attr(test, mockable)]
+impl GetUtxoMapOps for QtumCoin {
     async fn get_unspent_ordered_map(
         &self,
         addresses: Vec<Address>,

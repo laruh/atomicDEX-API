@@ -1,7 +1,7 @@
 use super::{lp_coinfind_or_err, MmCoinEnum};
 use crate::utxo::rpc_clients::UtxoRpcClientEnum;
 use crate::utxo::utxo_common::{big_decimal_from_sat_unsigned, UtxoTxBuilder};
-use crate::utxo::{sat_from_big_decimal, BlockchainNetwork, FeePolicy, ListUtxoOps, UtxoTxGenerationOps};
+use crate::utxo::{sat_from_big_decimal, BlockchainNetwork, FeePolicy, GetUtxoListOps, UtxoTxGenerationOps};
 use crate::{BalanceFut, CoinBalance, FeeApproxStage, FoundSwapTxSpend, HistorySyncState, MarketCoinOps, MmCoin,
             NegotiateSwapContractAddrErr, RawTransactionFut, RawTransactionRequest, SwapOps, TradeFee,
             TradePreimageFut, TradePreimageResult, TradePreimageValue, TransactionEnum, TransactionFut,

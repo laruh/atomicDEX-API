@@ -2,15 +2,15 @@ use crate::eth::{self, u256_to_big_decimal, wei_from_big_decimal, TryToAddress};
 use crate::qrc20::rpc_clients::{LogEntry, Qrc20ElectrumOps, Qrc20NativeOps, Qrc20RpcOps, TopicFilter, TxReceipt,
                                 ViewContractCallType};
 use crate::utxo::qtum::QtumBasedCoin;
-use crate::utxo::rpc_clients::{ElectrumClient, NativeClient, UnspentMap, UtxoRpcClientEnum, UtxoRpcClientOps,
+use crate::utxo::rpc_clients::{ElectrumClient, NativeClient, UnspentInfo, UtxoRpcClientEnum, UtxoRpcClientOps,
                                UtxoRpcError, UtxoRpcFut, UtxoRpcResult};
 use crate::utxo::utxo_builder::{UtxoCoinBuildError, UtxoCoinBuildResult, UtxoCoinBuilderCommonOps,
                                 UtxoCoinWithIguanaPrivKeyBuilder, UtxoFieldsWithIguanaPrivKeyBuilder};
 use crate::utxo::utxo_common::{self, big_decimal_from_sat, check_all_inputs_signed_by_pub, UtxoTxBuilder};
-use crate::utxo::{qtum, ActualTxFee, AdditionalTxData, BroadcastTxErr, FeePolicy, GenerateTxError, HistoryUtxoTx,
-                  HistoryUtxoTxMap, ListUtxoOps, MatureUnspentMap, RecentlySpentOutPointsGuard, UtxoActivationParams,
-                  UtxoAddressFormat, UtxoCoinFields, UtxoCommonOps, UtxoFromLegacyReqErr, UtxoTx, UtxoTxBroadcastOps,
-                  UtxoTxGenerationOps, VerboseTransactionFrom, UTXO_LOCK};
+use crate::utxo::{qtum, ActualTxFee, AdditionalTxData, BroadcastTxErr, FeePolicy, GenerateTxError, GetUtxoListOps,
+                  HistoryUtxoTx, HistoryUtxoTxMap, MatureUnspentList, RecentlySpentOutPointsGuard,
+                  UtxoActivationParams, UtxoAddressFormat, UtxoCoinFields, UtxoCommonOps, UtxoFromLegacyReqErr,
+                  UtxoTx, UtxoTxBroadcastOps, UtxoTxGenerationOps, VerboseTransactionFrom, UTXO_LOCK};
 use crate::{BalanceError, BalanceFut, CoinBalance, FeeApproxStage, FoundSwapTxSpend, HistorySyncState, MarketCoinOps,
             MmCoin, NegotiateSwapContractAddrErr, PrivKeyNotAllowed, RawTransactionFut, RawTransactionRequest,
             SwapOps, TradeFee, TradePreimageError, TradePreimageFut, TradePreimageResult, TradePreimageValue,
@@ -572,26 +572,26 @@ impl UtxoTxGenerationOps for Qrc20Coin {
 
 #[async_trait]
 #[cfg_attr(test, mockable)]
-impl ListUtxoOps for Qrc20Coin {
-    async fn get_unspent_ordered_map(
+impl GetUtxoListOps for Qrc20Coin {
+    async fn get_unspent_ordered_list(
         &self,
-        addresses: Vec<Address>,
-    ) -> UtxoRpcResult<(UnspentMap, RecentlySpentOutPointsGuard<'_>)> {
-        utxo_common::get_unspent_ordered_map(self, addresses).await
+        address: &Address,
+    ) -> UtxoRpcResult<(Vec<UnspentInfo>, RecentlySpentOutPointsGuard<'_>)> {
+        utxo_common::get_unspent_ordered_list(self, address).await
     }
 
-    async fn get_all_unspent_ordered_map(
+    async fn get_all_unspent_ordered_list(
         &self,
-        addresses: Vec<Address>,
-    ) -> UtxoRpcResult<(UnspentMap, RecentlySpentOutPointsGuard<'_>)> {
-        utxo_common::get_all_unspent_ordered_map(self, addresses).await
+        address: &Address,
+    ) -> UtxoRpcResult<(Vec<UnspentInfo>, RecentlySpentOutPointsGuard<'_>)> {
+        utxo_common::get_all_unspent_ordered_list(self, address).await
     }
 
-    async fn get_mature_unspent_ordered_map(
+    async fn get_mature_unspent_ordered_list(
         &self,
-        addresses: Vec<Address>,
-    ) -> UtxoRpcResult<(MatureUnspentMap, RecentlySpentOutPointsGuard<'_>)> {
-        utxo_common::get_mature_unspent_ordered_map(self, addresses).await
+        address: &Address,
+    ) -> UtxoRpcResult<(MatureUnspentList, RecentlySpentOutPointsGuard<'_>)> {
+        utxo_common::get_mature_unspent_ordered_list(self, address).await
     }
 }
 

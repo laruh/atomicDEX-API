@@ -25,7 +25,6 @@ use common::{block_on, now_ms, OrdRange, PagingOptionsEnum, DEX_FEE_ADDR_RAW_PUB
 use crypto::{Bip44Chain, RpcDerivationPath};
 use futures::future::join_all;
 use futures::TryFutureExt;
-use itertools::Itertools;
 use mocktopus::mocking::*;
 use rpc::v1::types::H256 as H256Json;
 use serialization::{deserialize, CoinVariant};
@@ -1676,8 +1675,7 @@ fn test_qtum_remove_delegation() {
 
 #[test]
 fn test_qtum_my_balance() {
-    QtumCoin::get_mature_unspent_ordered_map.mock_safe(move |coin, addresses| {
-        let address = addresses.into_iter().exactly_one().unwrap();
+    QtumCoin::get_mature_unspent_ordered_list.mock_safe(move |coin, _address| {
         let cache = block_on(coin.as_ref().recently_spent_outpoints.lock());
         // spendable balance (66.0)
         let mature = vec![
@@ -1707,8 +1705,10 @@ fn test_qtum_my_balance() {
             value: 200000000,
             height: Default::default(),
         }];
-        let unspents_map: MatureUnspentMap = iter::once((address, MatureUnspentList { mature, immature })).collect();
-        MockResult::Return(Box::pin(futures::future::ok((unspents_map, cache))))
+        MockResult::Return(Box::pin(futures::future::ok((
+            MatureUnspentList { mature, immature },
+            cache,
+        ))))
     });
 
     let conf = json!({"coin":"tQTUM","rpcport":13889,"pubtype":120,"p2shtype":110});
@@ -1740,9 +1740,9 @@ fn test_qtum_my_balance_with_check_utxo_maturity_false() {
     ElectrumClient::display_balance.mock_safe(move |_, _, _| {
         MockResult::Return(Box::new(futures01::future::ok(BigDecimal::from(DISPLAY_BALANCE))))
     });
-    QtumCoin::get_all_unspent_ordered_map.mock_safe(move |_, _| {
+    QtumCoin::get_all_unspent_ordered_list.mock_safe(move |_, _| {
         panic!(
-            "'QtumCoin::get_all_unspent_ordered_map' is not expected to be called when `check_utxo_maturity` is false"
+            "'QtumCoin::get_all_unspent_ordered_list' is not expected to be called when `check_utxo_maturity` is false"
         )
     });
 
@@ -1786,8 +1786,7 @@ fn test_get_mature_unspent_ordered_map_from_cache_impl(
     verbose.height = cached_height;
 
     // prepare mocks
-    ElectrumClient::list_unspent_group.mock_safe(move |_, addresses, _| {
-        let address = addresses.into_iter().exactly_one().unwrap();
+    ElectrumClient::list_unspent.mock_safe(move |_, _, _| {
         let unspents = vec![UnspentInfo {
             outpoint: OutPoint {
                 hash: H256::from_reversed_str(TX_HASH),
@@ -1796,8 +1795,7 @@ fn test_get_mature_unspent_ordered_map_from_cache_impl(
             value: 1000000000,
             height: unspent_height,
         }];
-        let unspents_map: UnspentMap = iter::once((address, unspents)).collect();
-        MockResult::Return(Box::new(futures01::future::ok(unspents_map)))
+        MockResult::Return(Box::new(futures01::future::ok(unspents)))
     });
     ElectrumClient::get_block_count
         .mock_safe(move |_| MockResult::Return(Box::new(futures01::future::ok(block_count))));
@@ -1817,13 +1815,13 @@ fn test_get_mature_unspent_ordered_map_from_cache_impl(
 
     // run test
     let coin = utxo_coin_for_test(UtxoRpcClientEnum::Electrum(client), None, false);
-    let (unspents_map, _) =
-        block_on(coin.get_mature_unspent_ordered_map(vec![Address::from("R9o9xTocqr6CeEDGDH6mEYpwLoMz6jNjMW")]))
+    let (unspents, _) =
+        block_on(coin.get_mature_unspent_ordered_list(&Address::from("R9o9xTocqr6CeEDGDH6mEYpwLoMz6jNjMW")))
             .expect("Expected an empty unspent list");
     // unspents should be empty because `is_unspent_mature()` always returns false
-    let (_address, unspents) = unspents_map.into_iter().exactly_one().unwrap();
-    assert!(unspents.mature.is_empty());
     assert!(unsafe { IS_UNSPENT_MATURE_CALLED == true });
+    assert!(unspents.mature.is_empty());
+    assert_eq!(unspents.immature.len(), 1);
 }
 
 #[test]
@@ -1982,11 +1980,8 @@ fn test_native_client_unspents_filtered_using_tx_cache_single_tx_in_cache() {
         tx.hash(),
         tx.outputs.clone(),
     );
-    NativeClient::list_unspent_group.mock_safe(move |_, addresses, _| {
-        let address = addresses.into_iter().exactly_one().unwrap();
-        let unspents_map: UnspentMap = iter::once((address, spent_by_tx.clone())).collect();
-        MockResult::Return(Box::new(futures01::future::ok(unspents_map)))
-    });
+    NativeClient::list_unspent
+        .mock_safe(move |_, _, _| MockResult::Return(Box::new(futures01::future::ok(spent_by_tx.clone()))));
 
     let (unspents_ordered, _) = block_on(coin.get_unspent_ordered_list(&address)).unwrap();
     // output 2 is change so it must be returned
@@ -2079,11 +2074,8 @@ fn test_native_client_unspents_filtered_using_tx_cache_single_several_chained_tx
     unspents_to_return.extend(spent_by_tx_1);
     unspents_to_return.extend(spent_by_tx_2);
 
-    NativeClient::list_unspent_group.mock_safe(move |_, addresses, _| {
-        let address = addresses.into_iter().exactly_one().unwrap();
-        let unspents_map: UnspentMap = iter::once((address, unspents_to_return.clone())).collect();
-        MockResult::Return(Box::new(futures01::future::ok(unspents_map)))
-    });
+    NativeClient::list_unspent
+        .mock_safe(move |_, _, _| MockResult::Return(Box::new(futures01::future::ok(unspents_to_return.clone()))));
 
     let (unspents_ordered, _) = block_on(coin.get_unspent_ordered_list(&address)).unwrap();
 
@@ -3143,14 +3135,10 @@ fn test_withdraw_to_p2wpkh() {
 fn test_utxo_standard_with_check_utxo_maturity_true() {
     static mut LIST_MATURE_UNSPENT_ORDERED_CALLED: bool = false;
 
-    UtxoStandardCoin::get_mature_unspent_ordered_map.mock_safe(|coin, addresses| {
+    UtxoStandardCoin::get_mature_unspent_ordered_list.mock_safe(|coin, _| {
         unsafe { LIST_MATURE_UNSPENT_ORDERED_CALLED = true };
-
-        let address = addresses.into_iter().exactly_one().unwrap();
-        let unspents_map: MatureUnspentMap = iter::once((address, MatureUnspentList::default())).collect();
-
         let cache = block_on(coin.as_ref().recently_spent_outpoints.lock());
-        MockResult::Return(Box::pin(futures::future::ok((unspents_map, cache))))
+        MockResult::Return(Box::pin(futures::future::ok((MatureUnspentList::default(), cache))))
     });
 
     let conf = json!({"coin":"RICK","asset":"RICK","rpcport":25435,"txversion":4,"overwintered":1,"mm2":1,"protocol":{"type":"UTXO"}});
@@ -3173,7 +3161,7 @@ fn test_utxo_standard_with_check_utxo_maturity_true() {
     .unwrap();
 
     let address = Address::from("R9o9xTocqr6CeEDGDH6mEYpwLoMz6jNjMW");
-    // Don't use `block_on` here because it's used within a mock of [`UtxoStandardCoin::get_mature_unspent_ordered_map`].
+    // Don't use `block_on` here because it's used within a mock of [`GetUtxoListOps::get_mature_unspent_ordered_list`].
     coin.get_unspent_ordered_list(&address).compat().wait().unwrap();
     assert!(unsafe { LIST_MATURE_UNSPENT_ORDERED_CALLED });
 }
@@ -3182,20 +3170,17 @@ fn test_utxo_standard_with_check_utxo_maturity_true() {
 /// https://github.com/KomodoPlatform/atomicDEX-API/issues/1181
 #[test]
 fn test_utxo_standard_without_check_utxo_maturity() {
-    static mut GET_ALL_UNSPENT_ORDERED_MAP_CALLED: bool = false;
+    static mut GET_ALL_UNSPENT_ORDERED_LIST_CALLED: bool = false;
 
-    UtxoStandardCoin::get_all_unspent_ordered_map.mock_safe(|coin, addresses| {
-        unsafe { GET_ALL_UNSPENT_ORDERED_MAP_CALLED = true };
-
-        let address = addresses.into_iter().exactly_one().unwrap();
-        let unspents_map: HashMap<_, _> = iter::once((address, Vec::new())).collect();
-
+    UtxoStandardCoin::get_all_unspent_ordered_list.mock_safe(|coin, _| {
+        unsafe { GET_ALL_UNSPENT_ORDERED_LIST_CALLED = true };
         let cache = block_on(coin.as_ref().recently_spent_outpoints.lock());
-        MockResult::Return(Box::pin(futures::future::ok((unspents_map, cache))))
+        let unspents = Vec::new();
+        MockResult::Return(Box::pin(futures::future::ok((unspents, cache))))
     });
 
-    UtxoStandardCoin::get_mature_unspent_ordered_map.mock_safe(|_, _| {
-        panic!("'UtxoStandardCoin::get_mature_unspent_ordered_map' is not expected to be called when `check_utxo_maturity` is not set")
+    UtxoStandardCoin::get_mature_unspent_ordered_list.mock_safe(|_, _| {
+        panic!("'UtxoStandardCoin::get_mature_unspent_ordered_list' is not expected to be called when `check_utxo_maturity` is not set")
     });
 
     let conf = json!({"coin":"RICK","asset":"RICK","rpcport":25435,"txversion":4,"overwintered":1,"mm2":1,"protocol":{"type":"UTXO"}});
@@ -3217,25 +3202,21 @@ fn test_utxo_standard_without_check_utxo_maturity() {
     .unwrap();
 
     let address = Address::from("R9o9xTocqr6CeEDGDH6mEYpwLoMz6jNjMW");
-    // Don't use `block_on` here because it's used within a mock of [`UtxoStandardCoin::get_mature_unspent_ordered_map`].
+    // Don't use `block_on` here because it's used within a mock of [`UtxoStandardCoin::get_all_unspent_ordered_list`].
     coin.get_unspent_ordered_list(&address).compat().wait().unwrap();
-    assert!(unsafe { GET_ALL_UNSPENT_ORDERED_MAP_CALLED });
+    assert!(unsafe { GET_ALL_UNSPENT_ORDERED_LIST_CALLED });
 }
 
 /// `QtumCoin` has to check UTXO maturity if `check_utxo_maturity` is not set.
 /// https://github.com/KomodoPlatform/atomicDEX-API/issues/1181
 #[test]
 fn test_qtum_without_check_utxo_maturity() {
-    static mut GET_MATURE_UNSPENT_ORDERED_MAP_CALLED: bool = false;
+    static mut GET_MATURE_UNSPENT_ORDERED_LIST_CALLED: bool = false;
 
-    QtumCoin::get_mature_unspent_ordered_map.mock_safe(|coin, addresses| {
-        unsafe { GET_MATURE_UNSPENT_ORDERED_MAP_CALLED = true };
-
-        let address = addresses.into_iter().exactly_one().unwrap();
-        let unspents_map: HashMap<_, _> = iter::once((address, MatureUnspentList::default())).collect();
-
+    QtumCoin::get_mature_unspent_ordered_list.mock_safe(|coin, _| {
+        unsafe { GET_MATURE_UNSPENT_ORDERED_LIST_CALLED = true };
         let cache = block_on(coin.as_ref().recently_spent_outpoints.lock());
-        MockResult::Return(Box::pin(futures::future::ok((unspents_map, cache))))
+        MockResult::Return(Box::pin(futures::future::ok((MatureUnspentList::default(), cache))))
     });
 
     let conf = json!({"coin":"tQTUM","rpcport":13889,"pubtype":120,"p2shtype":110});
@@ -3254,29 +3235,26 @@ fn test_qtum_without_check_utxo_maturity() {
     let coin = block_on(qtum_coin_with_priv_key(&ctx, "QTUM", &conf, &params, &[1u8; 32])).unwrap();
 
     let address = Address::from("qcyBHeSct7Wr4mAw18iuQ1zW5mMFYmtmBE");
-    // Don't use `block_on` here because it's used within a mock of [`QtumCoin::get_mature_unspent_ordered_map`].
+    // Don't use `block_on` here because it's used within a mock of [`QtumCoin::get_mature_unspent_ordered_list`].
     coin.get_unspent_ordered_list(&address).compat().wait().unwrap();
-    assert!(unsafe { GET_MATURE_UNSPENT_ORDERED_MAP_CALLED });
+    assert!(unsafe { GET_MATURE_UNSPENT_ORDERED_LIST_CALLED });
 }
 
 /// `QtumCoin` hasn't to check UTXO maturity if `check_utxo_maturity` is `false`.
 /// https://github.com/KomodoPlatform/atomicDEX-API/issues/1181
 #[test]
 fn test_qtum_with_check_utxo_maturity_false() {
-    static mut GET_ALL_UNSPENT_ORDERED_MAP_CALLED: bool = false;
+    static mut GET_ALL_UNSPENT_ORDERED_LIST_CALLED: bool = false;
 
-    QtumCoin::get_all_unspent_ordered_map.mock_safe(|coin, addresses| {
-        unsafe { GET_ALL_UNSPENT_ORDERED_MAP_CALLED = true };
-
-        let address = addresses.into_iter().exactly_one().unwrap();
-        let unspents_map: HashMap<_, _> = iter::once((address, Vec::new())).collect();
-
+    QtumCoin::get_all_unspent_ordered_list.mock_safe(|coin, _address| {
+        unsafe { GET_ALL_UNSPENT_ORDERED_LIST_CALLED = true };
         let cache = block_on(coin.as_ref().recently_spent_outpoints.lock());
-        MockResult::Return(Box::pin(futures::future::ok((unspents_map, cache))))
+        let unspents = Vec::new();
+        MockResult::Return(Box::pin(futures::future::ok((unspents, cache))))
     });
-    QtumCoin::get_mature_unspent_ordered_map.mock_safe(|_, _| {
+    QtumCoin::get_mature_unspent_ordered_list.mock_safe(|_, _| {
         panic!(
-            "'QtumCoin::get_mature_unspent_ordered_map' is not expected to be called when `check_utxo_maturity` is false"
+            "'QtumCoin::get_mature_unspent_ordered_list' is not expected to be called when `check_utxo_maturity` is false"
         )
     });
 
@@ -3297,9 +3275,9 @@ fn test_qtum_with_check_utxo_maturity_false() {
     let coin = block_on(qtum_coin_with_priv_key(&ctx, "QTUM", &conf, &params, &[1u8; 32])).unwrap();
 
     let address = Address::from("qcyBHeSct7Wr4mAw18iuQ1zW5mMFYmtmBE");
-    // Don't use `block_on` here because it's used within a mock of [`QtumCoin::get_all_unspent_ordered_map`].
+    // Don't use `block_on` here because it's used within a mock of [`QtumCoin::get_all_unspent_ordered_list`].
     coin.get_unspent_ordered_list(&address).compat().wait().unwrap();
-    assert!(unsafe { GET_ALL_UNSPENT_ORDERED_MAP_CALLED });
+    assert!(unsafe { GET_ALL_UNSPENT_ORDERED_LIST_CALLED });
 }
 
 #[test]

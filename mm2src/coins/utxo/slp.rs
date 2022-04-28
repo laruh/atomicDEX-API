@@ -1779,7 +1779,7 @@ pub fn slp_addr_from_pubkey_str(pubkey: &str, prefix: &str) -> Result<String, Mm
 mod slp_tests {
     use super::*;
     use crate::utxo::bch::tbch_coin_for_test;
-    use crate::utxo::ListUtxoOps;
+    use crate::utxo::GetUtxoListOps;
     use common::block_on;
 
     // https://slp.dev/specs/slp-token-type-1/#examples

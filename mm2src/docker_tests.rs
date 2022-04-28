@@ -112,7 +112,7 @@ mod docker_tests {
     use coins::utxo::slp::{slp_genesis_output, SlpOutput};
     use coins::utxo::utxo_common::send_outputs_from_my_address;
     use coins::utxo::utxo_standard::{utxo_standard_coin_with_priv_key, UtxoStandardCoin};
-    use coins::utxo::{dhash160, ListUtxoOps, UtxoActivationParams, UtxoCommonOps};
+    use coins::utxo::{dhash160, GetUtxoListOps, UtxoActivationParams, UtxoCommonOps};
     use coins::{CoinProtocol, FoundSwapTxSpend, MarketCoinOps, MmCoin, SwapOps, Transaction, TransactionEnum,
                 WithdrawRequest};
     use common::for_tests::{check_my_swap_status_amounts, enable_electrum};

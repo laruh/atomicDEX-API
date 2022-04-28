@@ -5,7 +5,7 @@ use crate::qrc20::{contract_addr_into_rpc_format, ContractCallOutput, GenerateQr
 use crate::utxo::qtum::{QtumBasedCoin, QtumCoin, QtumDelegationOps, QtumDelegationRequest, QtumStakingInfosDetails};
 use crate::utxo::rpc_clients::UtxoRpcClientEnum;
 use crate::utxo::utxo_common::{big_decimal_from_sat_unsigned, UtxoTxBuilder};
-use crate::utxo::{qtum, utxo_common, Address, ListUtxoOps, UtxoCommonOps};
+use crate::utxo::{qtum, utxo_common, Address, GetUtxoListOps, UtxoCommonOps};
 use crate::utxo::{PrivKeyNotAllowed, UTXO_LOCK};
 use crate::{DelegationError, DelegationFut, DelegationResult, MarketCoinOps, StakingInfos, StakingInfosError,
             StakingInfosFut, StakingInfosResult, TransactionDetails, TransactionType};
