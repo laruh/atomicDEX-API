@@ -198,12 +198,12 @@ pub async fn init_channel_manager(
     let channel_manager: Arc<ChannelManager> = Arc::new(channel_manager);
 
     // Sync ChannelMonitors and ChannelManager to chain tip if the node is restarting and has open channels
+    platform
+        .process_txs_confirmations(&rpc_client, &persister, &chain_monitor, &channel_manager)
+        .await;
     if channel_manager_blockhash != best_block_hash {
         platform
             .process_txs_unconfirmations(&chain_monitor, &channel_manager)
-            .await;
-        platform
-            .process_txs_confirmations(&rpc_client, &persister, &chain_monitor, &channel_manager)
             .await;
         update_best_block(&chain_monitor, &channel_manager, best_header).await;
     }

@@ -155,14 +155,17 @@ pub async fn ln_best_block_update_loop(
 ) {
     let mut current_best_block = best_block;
     loop {
+        // Transactions confirmations check can be done at every CHECK_FOR_NEW_BEST_BLOCK_INTERVAL instead of at every new block
+        // in case a transaction confirmation fails due to electrums being down. This way there will be no need to wait for a new
+        // block to confirm such transaction and causing delays.
+        platform
+            .process_txs_confirmations(&best_header_listener, &persister, &chain_monitor, &channel_manager)
+            .await;
         let best_header = ok_or_continue_after_sleep!(get_best_header(&best_header_listener).await, TRY_LOOP_INTERVAL);
         if current_best_block != best_header.clone().into() {
             platform.update_best_block_height(best_header.block_height());
             platform
                 .process_txs_unconfirmations(&chain_monitor, &channel_manager)
-                .await;
-            platform
-                .process_txs_confirmations(&best_header_listener, &persister, &chain_monitor, &channel_manager)
                 .await;
             current_best_block = best_header.clone().into();
             update_best_block(&chain_monitor, &channel_manager, best_header).await;
@@ -313,28 +316,21 @@ impl Platform {
         let registered_txs = self.registered_txs.lock().clone();
         let mut confirmed_registered_txs = Vec::new();
         for (txid, scripts) in registered_txs {
-            if let Some(transaction) =
-                ok_or_continue_after_sleep!(self.get_tx_if_onchain(txid).await, TRY_LOOP_INTERVAL)
-            {
+            if let Some(transaction) = ok_or_continue!(self.get_tx_if_onchain(txid).await) {
                 for (_, vout) in transaction.output.iter().enumerate() {
                     if scripts.contains(&vout.script_pubkey) {
                         let script_hash = hex::encode(electrum_script_hash(vout.script_pubkey.as_ref()));
-                        let history = ok_or_retry_after_sleep!(
-                            client.scripthash_get_history(&script_hash).compat().await,
-                            TRY_LOOP_INTERVAL
-                        );
+                        let history = ok_or_continue!(client.scripthash_get_history(&script_hash).compat().await);
                         for item in history {
                             let rpc_txid = h256_json_from_txid(txid);
                             if item.tx_hash == rpc_txid && item.height > 0 {
                                 let height = item.height as u64;
-                                let header =
-                                    ok_or_retry_after_sleep!(get_block_header(client, height).await, TRY_LOOP_INTERVAL);
-                                let index = ok_or_retry_after_sleep!(
+                                let header = ok_or_continue!(get_block_header(client, height).await);
+                                let index = ok_or_continue!(
                                     client
                                         .blockchain_transaction_get_merkle(rpc_txid, height)
                                         .compat()
-                                        .await,
-                                    TRY_LOOP_INTERVAL
+                                        .await
                                 )
                                 .pos;
                                 let confirmed_transaction_info = ConfirmedTransactionInfo::new(
@@ -363,21 +359,17 @@ impl Platform {
         let mut outputs_to_remove = Vec::new();
         let registered_outputs = self.registered_outputs.lock().clone();
         for output in registered_outputs {
-            if let Some(tx_info) = ok_or_continue_after_sleep!(
-                find_watched_output_spend_with_header(client, &output).await,
-                TRY_LOOP_INTERVAL
-            ) {
+            if let Some(tx_info) = ok_or_continue!(find_watched_output_spend_with_header(client, &output).await) {
                 if !transactions_to_confirm
                     .iter()
                     .any(|info| info.txid == tx_info.tx.txid())
                 {
                     let rpc_txid = h256_json_from_txid(tx_info.tx.txid());
-                    let index = ok_or_retry_after_sleep!(
+                    let index = ok_or_continue!(
                         client
                             .blockchain_transaction_get_merkle(rpc_txid, tx_info.block_height)
                             .compat()
-                            .await,
-                        TRY_LOOP_INTERVAL
+                            .await
                     )
                     .pos;
                     let confirmed_transaction_info = ConfirmedTransactionInfo::new(
