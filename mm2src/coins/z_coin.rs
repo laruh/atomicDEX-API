@@ -30,6 +30,7 @@ use futures::{FutureExt, TryFutureExt};
 use futures01::Future;
 use keys::hash::H256;
 use keys::{KeyPair, Public};
+#[cfg(test)] use mocktopus::macros::*;
 use primitives::bytes::Bytes;
 use rpc::v1::types::{Bytes as BytesJson, ToTxHash, Transaction as RpcTransaction, H256 as H256Json};
 use rusqlite::types::Type;
