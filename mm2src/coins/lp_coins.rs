@@ -32,6 +32,7 @@
 #[macro_use] extern crate ser_error_derive;
 
 use async_trait::async_trait;
+use base58::FromBase58Error;
 use bigdecimal::{BigDecimal, ParseBigDecimalError, Zero};
 use common::executor::{spawn, Timer};
 use common::mm_ctx::{from_ctx, MmArc, MmWeak};
@@ -215,12 +216,11 @@ pub mod eth;
 pub mod hd_pubkey;
 pub mod hd_wallet;
 pub mod hd_wallet_storage;
-pub mod init_create_account;
-pub mod init_withdraw;
 #[cfg(not(target_arch = "wasm32"))] pub mod lightning;
 #[cfg_attr(target_arch = "wasm32", allow(dead_code, unused_imports))]
 pub mod my_tx_history_v2;
 pub mod qrc20;
+pub mod rpc_command;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod sql_tx_history_storage;
 #[doc(hidden)]
@@ -245,11 +245,12 @@ mod z_transactions;
 
 use eth::{eth_coin_from_conf_and_request, EthCoin, EthTxFeeDetails, SignedEthTx};
 use hd_wallet::{HDAddress, HDAddressId};
-use init_create_account::{CreateAccountTaskManager, CreateAccountTaskManagerShared};
-use init_withdraw::{WithdrawTaskManager, WithdrawTaskManagerShared};
 use qrc20::Qrc20ActivationParams;
 use qrc20::{qrc20_coin_from_conf_and_params, Qrc20Coin, Qrc20FeeDetails};
 use qtum::{Qrc20AddressError, ScriptHashTypeNotSupported};
+use rpc_command::init_create_account::{CreateAccountTaskManager, CreateAccountTaskManagerShared};
+use rpc_command::init_scan_for_new_addresses::{ScanAddressesTaskManager, ScanAddressesTaskManagerShared};
+use rpc_command::init_withdraw::{WithdrawTaskManager, WithdrawTaskManagerShared};
 use utxo::bch::{bch_coin_from_conf_and_params, BchActivationRequest, BchCoin};
 use utxo::qtum::{self, qtum_coin_with_priv_key, QtumCoin};
 use utxo::qtum::{QtumDelegationOps, QtumDelegationRequest, QtumStakingInfosDetails};
@@ -328,6 +329,9 @@ pub struct RawTransactionRes {
     /// Raw bytes of signed transaction in hexadecimal string, this should be return hexadecimal encoded signed transaction for get_raw_transaction
     pub tx_hex: BytesJson,
 }
+
+pub type SignatureResult<T> = Result<T, MmError<SignatureError>>;
+pub type VerificationResult<T> = Result<T, MmError<VerificationError>>;
 
 #[derive(Debug, Display)]
 pub enum TxHistoryError {
@@ -590,6 +594,14 @@ pub trait MarketCoinOps {
 
     fn my_address(&self) -> Result<String, String>;
 
+    fn get_public_key(&self) -> Result<String, MmError<UnexpectedDerivationMethod>>;
+
+    fn sign_message_hash(&self, _message: &str) -> Option<[u8; 32]>;
+
+    fn sign_message(&self, _message: &str) -> SignatureResult<String>;
+
+    fn verify_message(&self, _signature: &str, _message: &str, _address: &str) -> VerificationResult<bool>;
+
     fn get_non_zero_balance(&self) -> NonZeroBalanceFut<MmNumber> {
         let closure = |spendable: BigDecimal| {
             if spendable.is_zero() {
@@ -746,6 +758,20 @@ pub struct GetStakingInfosRequest {
     pub coin: String,
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct SignatureRequest {
+    coin: String,
+    message: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct VerificationRequest {
+    coin: String,
+    message: String,
+    signature: String,
+    address: String,
+}
+
 impl WithdrawRequest {
     pub fn new(
         coin: String,
@@ -790,6 +816,16 @@ impl From<QtumStakingInfosDetails> for StakingInfosDetails {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct StakingInfos {
     pub staking_infos_details: StakingInfosDetails,
+}
+
+#[derive(Serialize)]
+pub struct SignatureResponse {
+    signature: String,
+}
+
+#[derive(Serialize)]
+pub struct VerificationResponse {
+    is_valid: bool,
 }
 
 /// Please note that no type should have the same structure as another type,
@@ -1538,6 +1574,109 @@ impl WithdrawError {
     }
 }
 
+#[derive(Serialize, Display, Debug, SerializeErrorType)]
+#[serde(tag = "error_type", content = "error_data")]
+pub enum SignatureError {
+    #[display(fmt = "Invalid request: {}", _0)]
+    InvalidRequest(String),
+    #[display(fmt = "Internal error: {}", _0)]
+    InternalError(String),
+    #[display(fmt = "Coin is not found: {}", _0)]
+    CoinIsNotFound(String),
+    #[display(fmt = "sign_message_prefix is not set in coin config")]
+    PrefixNotFound,
+}
+
+impl HttpStatusCode for SignatureError {
+    fn status_code(&self) -> StatusCode {
+        match self {
+            SignatureError::InvalidRequest(_) => StatusCode::BAD_REQUEST,
+            SignatureError::CoinIsNotFound(_) => StatusCode::BAD_REQUEST,
+            SignatureError::InternalError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            SignatureError::PrefixNotFound => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
+
+impl From<keys::Error> for SignatureError {
+    fn from(e: keys::Error) -> Self { SignatureError::InternalError(e.to_string()) }
+}
+
+impl From<ethkey::Error> for SignatureError {
+    fn from(e: ethkey::Error) -> Self { SignatureError::InternalError(e.to_string()) }
+}
+
+impl From<PrivKeyNotAllowed> for SignatureError {
+    fn from(e: PrivKeyNotAllowed) -> Self { SignatureError::InternalError(e.to_string()) }
+}
+
+impl From<CoinFindError> for SignatureError {
+    fn from(e: CoinFindError) -> Self { SignatureError::CoinIsNotFound(e.to_string()) }
+}
+
+#[derive(Serialize, Display, Debug, SerializeErrorType)]
+#[serde(tag = "error_type", content = "error_data")]
+pub enum VerificationError {
+    #[display(fmt = "Invalid request: {}", _0)]
+    InvalidRequest(String),
+    #[display(fmt = "Internal error: {}", _0)]
+    InternalError(String),
+    #[display(fmt = "Signature decoding error: {}", _0)]
+    SignatureDecodingError(String),
+    #[display(fmt = "Address decoding error: {}", _0)]
+    AddressDecodingError(String),
+    #[display(fmt = "Coin is not found: {}", _0)]
+    CoinIsNotFound(String),
+    #[display(fmt = "sign_message_prefix is not set in coin config")]
+    PrefixNotFound,
+}
+
+impl HttpStatusCode for VerificationError {
+    fn status_code(&self) -> StatusCode {
+        match self {
+            VerificationError::InvalidRequest(_) => StatusCode::BAD_REQUEST,
+            VerificationError::SignatureDecodingError(_) => StatusCode::BAD_REQUEST,
+            VerificationError::AddressDecodingError(_) => StatusCode::BAD_REQUEST,
+            VerificationError::CoinIsNotFound(_) => StatusCode::BAD_REQUEST,
+            VerificationError::InternalError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            VerificationError::PrefixNotFound => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
+
+impl From<base64::DecodeError> for VerificationError {
+    fn from(e: base64::DecodeError) -> Self { VerificationError::SignatureDecodingError(e.to_string()) }
+}
+
+impl From<hex::FromHexError> for VerificationError {
+    fn from(e: hex::FromHexError) -> Self { VerificationError::AddressDecodingError(e.to_string()) }
+}
+
+impl From<FromBase58Error> for VerificationError {
+    fn from(e: FromBase58Error) -> Self {
+        match e {
+            FromBase58Error::InvalidBase58Character(c, _) => {
+                VerificationError::AddressDecodingError(format!("Invalid Base58 Character: {}", c))
+            },
+            FromBase58Error::InvalidBase58Length => {
+                VerificationError::AddressDecodingError(String::from("Invalid Base58 Length"))
+            },
+        }
+    }
+}
+
+impl From<keys::Error> for VerificationError {
+    fn from(e: keys::Error) -> Self { VerificationError::InternalError(e.to_string()) }
+}
+
+impl From<ethkey::Error> for VerificationError {
+    fn from(e: ethkey::Error) -> Self { VerificationError::InternalError(e.to_string()) }
+}
+
+impl From<CoinFindError> for VerificationError {
+    fn from(e: CoinFindError) -> Self { VerificationError::CoinIsNotFound(e.to_string()) }
+}
+
 /// NB: Implementations are expected to follow the pImpl idiom, providing cheap reference-counted cloning and garbage collection.
 #[async_trait]
 pub trait MmCoin: SwapOps + MarketCoinOps + fmt::Debug + Send + Sync + 'static {
@@ -1758,6 +1897,7 @@ pub struct CoinsContext {
     balance_update_handlers: AsyncMutex<Vec<Box<dyn BalanceTradeFeeUpdatedHandler + Send + Sync>>>,
     withdraw_task_manager: WithdrawTaskManagerShared,
     create_account_manager: CreateAccountTaskManagerShared,
+    scan_addresses_manager: ScanAddressesTaskManagerShared,
     #[cfg(target_arch = "wasm32")]
     tx_history_db: SharedDb<TxHistoryDb>,
     #[cfg(target_arch = "wasm32")]
@@ -1783,6 +1923,7 @@ impl CoinsContext {
                 balance_update_handlers: AsyncMutex::new(vec![]),
                 withdraw_task_manager: WithdrawTaskManager::new_shared(),
                 create_account_manager: CreateAccountTaskManager::new_shared(),
+                scan_addresses_manager: ScanAddressesTaskManager::new_shared(),
                 #[cfg(target_arch = "wasm32")]
                 tx_history_db: ConstructibleDb::new_shared(ctx),
                 #[cfg(target_arch = "wasm32")]
@@ -2366,9 +2507,9 @@ struct ValidateAddressReq {
 
 #[derive(Serialize)]
 pub struct ValidateAddressResult {
-    is_valid: bool,
+    pub is_valid: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    reason: Option<String>,
+    pub reason: Option<String>,
 }
 
 pub async fn validate_address(ctx: MmArc, req: Json) -> Result<Response<Vec<u8>>, String> {
@@ -2392,6 +2533,27 @@ pub async fn withdraw(ctx: MmArc, req: WithdrawRequest) -> WithdrawResult {
 pub async fn get_raw_transaction(ctx: MmArc, req: RawTransactionRequest) -> RawTransactionResult {
     let coin = lp_coinfind_or_err(&ctx, &req.coin).await?;
     coin.get_raw_transaction(req).compat().await
+}
+
+pub async fn sign_message(ctx: MmArc, req: SignatureRequest) -> SignatureResult<SignatureResponse> {
+    let coin = lp_coinfind_or_err(&ctx, &req.coin).await?;
+    let signature = coin.sign_message(&req.message)?;
+    Ok(SignatureResponse { signature })
+}
+
+pub async fn verify_message(ctx: MmArc, req: VerificationRequest) -> VerificationResult<VerificationResponse> {
+    let coin = lp_coinfind_or_err(&ctx, &req.coin).await?;
+
+    let validate_address_result = coin.validate_address(&req.address);
+    if !validate_address_result.is_valid {
+        return MmError::err(VerificationError::InvalidRequest(
+            validate_address_result.reason.unwrap_or_else(|| "Unknown".to_string()),
+        ));
+    }
+
+    let is_valid = coin.verify_message(&req.signature, &req.message, &req.address)?;
+
+    Ok(VerificationResponse { is_valid })
 }
 
 pub async fn remove_delegation(ctx: MmArc, req: RemoveDelegateRequest) -> DelegationResult {
