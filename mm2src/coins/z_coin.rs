@@ -557,7 +557,7 @@ async fn sapling_state_cache_loop(coin: ZCoin) {
         let current_block = match coin.rpc_client().get_block_count().compat().await {
             Ok(b) => b,
             Err(e) => {
-                log::error!("Error {} on getting block count", e);
+                log::error!("Error {:?} on getting block count", e);
                 Timer::sleep(10.).await;
                 continue;
             },
@@ -571,7 +571,7 @@ async fn sapling_state_cache_loop(coin: ZCoin) {
             let block = match native_client.get_block_by_height(processed_height as u64).await {
                 Ok(b) => b,
                 Err(e) => {
-                    log::error!("Error {} on getting block", e);
+                    log::error!("Error {:?} on getting block", e);
                     Timer::sleep(1.).await;
                     continue;
                 },
@@ -615,6 +615,164 @@ async fn sapling_state_cache_loop(coin: ZCoin) {
         Timer::sleep(10.).await;
     }
 }
+// test code
+
+struct TransactionShielded {
+    txid: [u8; 32],
+    tx_hash: H256,
+    out_amount: u64,
+}
+// out_amount уточнить
+fn init_test_db(sql: &Connection) -> Result<(), SqliteError> {
+    const INIT_SAPLING_CACHE_TABLE_STMT: &str = "CREATE TABLE IF NOT EXISTS z_shielded (
+        txid BLOB NOT NULL PRIMARY KEY,
+        tx_hash BLOB NOT NULL,
+        out_amount INTEGER
+    );";
+
+    sql.execute(INIT_SAPLING_CACHE_TABLE_STMT, NO_PARAMS).map(|_| ())
+}
+
+fn insert_shielded_info(conn: &Connection, tx: TransactionShielded) -> Result<(), SqliteError> {
+    const INSERT_INFO: &str = "INSERT INTO z_shielded (txid, tx_hash, out_amount) VALUES (?1, ?2, ?3);";
+    let txid = tx.txid;
+    let tx_hash = tx.tx_hash;
+    let out_amount = tx.out_amount;
+
+    conn.execute(INSERT_INFO, &[txid, tx_hash, out_amount]).map(|_| ())
+}
+
+async fn decrypted_shielded_outs(
+    coin: ZCoin,
+    min_block_number: u64,
+    fee_tx: &TransactionEnum,
+    amount: &BigDecimal) -> Result<(), String> {
+
+    let (utxo_weak, z_fields_weak) = coin.into_weak_parts();
+
+    let amount_sat = try_fus!(sat_from_big_decimal(amount, coin.utxo_arc.decimals));
+    let expected_memo = MemoBytes::from_bytes(uuid).expect("Uuid length < 512");
+
+    let z_tx = match fee_tx {
+        TransactionEnum::ZTransaction(t) => t.clone(),
+        _ => panic!("Unexpected tx {:?}", fee_tx),
+    };
+
+    let zero_root = Some(H256Json::default());
+    while let Some(coin) = ZCoin::from_weak_parts(&utxo_weak, &z_fields_weak) {
+        coin.z_fields.sapling_state_synced.store(false, AtomicOrdering::Relaxed);
+        let current_block = match coin.rpc_client().get_block_count().compat().await {
+            Ok(b) => b,
+            Err(e) => {
+                log::error!("Error {:?} on getting block count", e);
+                Timer::sleep(10.).await;
+                continue;
+            },
+        };
+
+        let native_client = match coin.rpc_client() {
+            UtxoRpcClientEnum::Native(n) => n,
+            _ => unimplemented!("Implemented only for native client"),
+        };
+        while processed_height as u64 <= current_block {
+            let block = match native_client.get_block_by_height(processed_height as u64).await {
+                Ok(b) => b,
+                Err(e) => {
+                    log::error!("Error {:?} on getting block", e);
+                    Timer::sleep(1.).await;
+                    continue;
+                },
+            };
+            let current_sapling_root = current_tree.root();
+            let mut root_bytes = [0u8; 32];
+            current_sapling_root
+                .write(&mut root_bytes as &mut [u8])
+                .expect("Root len is 32 bytes");
+
+            let current_sapling_root = Some(H256::from(root_bytes).reversed().into());
+            if current_sapling_root != block.final_sapling_root && block.final_sapling_root != zero_root {
+
+                for hash in block.tx {
+
+                    let tx = native_client
+                        .get_transaction_bytes(&hash)
+                        .compat()
+                        .await
+                        .expect("Panic here to avoid storing invalid tree state to the DB");
+                    let tx: UtxoTx = deserialize(tx.as_slice()).expect("Panic here to avoid invalid tree state");
+
+                    let tx_from_rpc = try_s!(
+                        coin.rpc_client()
+                        .get_verbose_transaction(&hash.into())
+                        .compat()
+                        .await);
+
+                    let mut encoded = Vec::with_capacity(1024);
+                    z_tx.write(&mut encoded).expect("Writing should not fail");
+                    if encoded != tx_from_rpc.hex.0 {
+                        return ERR!("Encoded transaction {} does not match the tx {} from RPC", encoded, tx_from_rpc);
+                    }
+                    let block_height = match tx_from_rpc.height {
+                        Some(h) => {
+                            if h < min_block_number {
+                                return ERR!("Dex fee tx {:?} confirmed before min block {}", z_tx, min_block_number);
+                            } else {
+                                BlockHeight::from_u32(h as u32)
+                            }
+                        },
+                        None => H0,
+                    };
+
+                    for shielded_out in z_tx.shielded_outputs.iter() {
+                        if let Some((note, address, memo)) =
+                        try_sapling_output_recovery(&ARRRConsensusParams {}, block_height, &DEX_FEE_OVK, shielded_out)
+                        {
+                            if address != coin.z_fields.dex_fee_addr {
+                                let encoded =
+                                    encode_payment_address(z_mainnet_constants::HRP_SAPLING_PAYMENT_ADDRESS, &address);
+                                let expected = encode_payment_address(
+                                    z_mainnet_constants::HRP_SAPLING_PAYMENT_ADDRESS,
+                                    &coin.z_fields.dex_fee_addr,
+                                );
+                                return ERR!( "Dex fee was sent to the invalid address {}, expected {}",  encoded, expected);
+                            }
+
+                            if note.value != amount_sat {
+                                return ERR!("Dex fee has invalid amount {}, expected {}", note.value, amount_sat);
+                            }
+
+                            if memo != expected_memo {
+                                return ERR!("Dex fee has invalid memo {:?}, expected {:?}", memo, expected_memo);
+                            }
+
+                            let txid = z_tx.txid().0;
+                            // ?
+                            let out_amount = shielded_out;
+
+                            // insert in DB transaction hash, shielded output index and output amount
+
+                            let state_to_insert = TransactionShielded {
+                                txid,
+                                tx_hash: hash.into(),
+                                out_amount: 0
+                            };
+                            insert_shielded_info(&coin.sqlite_conn(), state_to_insert)
+                                .expect("Insertion should not fail");
+
+                        }
+
+                    } ERR!("The dex fee tx {:?} has no shielded outputs or outputs decryption failed", z_tx)
+                }
+            }
+            processed_height += 1;
+        }
+        coin.z_fields.sapling_state_synced.store(true, AtomicOrdering::Relaxed);
+        drop(coin);
+        Timer::sleep(10.).await;
+    }
+    Ok(())
+}
+// test code
 
 pub struct ZCoinBuilder<'a> {
     ctx: &'a MmArc,
