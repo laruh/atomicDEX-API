@@ -504,6 +504,15 @@ fn query_latest_block(conn: &Connection) -> Result<SaplingBlockState, SqliteErro
     })
 }
 
+fn query_first_block(conn: &Connection) -> Result<SaplingBlockState, SqliteError> {
+    const QUERY_LATEST_BLOCK_STMT: &str =
+        "SELECT height, prev_tree_state, cmus FROM sapling_cache ORDER BY height ASC LIMIT 1";
+
+    conn.query_row(QUERY_LATEST_BLOCK_STMT, NO_PARAMS, |row: &Row<'_>| {
+        SaplingBlockState::try_from(row)
+    })
+}
+
 #[allow(clippy::needless_question_mark)]
 fn query_states_after_height(conn: &Connection, height: u32) -> Result<Vec<SaplingBlockState>, SqliteError> {
     const GET_BLOCK_STATES_AFTER_HEIGHT: &str =
@@ -618,14 +627,14 @@ async fn sapling_state_cache_loop(coin: ZCoin) {
 // test code
 
 struct TransactionShielded {
-    txid: [u8; 32],
+    txid: i32,
     tx_hash: H256,
-    out_amount: u64,
+    out_amount: i64,
 }
 // out_amount уточнить
 fn init_test_db(sql: &Connection) -> Result<(), SqliteError> {
     const INIT_SAPLING_CACHE_TABLE_STMT: &str = "CREATE TABLE IF NOT EXISTS z_shielded (
-        txid BLOB NOT NULL PRIMARY KEY,
+        txid INTEGER NOT NULL PRIMARY KEY,
         tx_hash BLOB NOT NULL,
         out_amount INTEGER
     );";
@@ -635,28 +644,36 @@ fn init_test_db(sql: &Connection) -> Result<(), SqliteError> {
 
 fn insert_shielded_info(conn: &Connection, tx: TransactionShielded) -> Result<(), SqliteError> {
     const INSERT_INFO: &str = "INSERT INTO z_shielded (txid, tx_hash, out_amount) VALUES (?1, ?2, ?3);";
-    let txid = tx.txid;
-    let tx_hash = tx.tx_hash;
-    let out_amount = tx.out_amount;
+    let txid = tx.txid.to_sql()?;
+    let tx_hash = tx.tx_hash.to_sql()?;
+    let out_amount = tx.out_amount.to_sql()?;
 
     conn.execute(INSERT_INFO, &[txid, tx_hash, out_amount]).map(|_| ())
 }
 
-async fn decrypted_shielded_outs(
+async fn decrypted_shielded_outs (
     coin: ZCoin,
     min_block_number: u64,
     fee_tx: &TransactionEnum,
-    amount: &BigDecimal) -> Result<(), String> {
+    amount: &BigDecimal,
+    uuid: &[u8],) -> Result<(), String> {
+
+    let query = tokio::task::block_in_place(|| query_first_block(&coin.sqlite_conn()));
+    let (mut processed_height, mut current_tree) = match query {
+        Ok(state) => {
+            let mut tree = state.prev_tree_state;
+            for cmu in state.cmus {
+                tree.append(Node::new(cmu.take())).expect("Commitment tree not full");
+            }
+            (state.height, tree)
+        },
+        Err(_) => (0, CommitmentTree::empty()),
+    };
 
     let (utxo_weak, z_fields_weak) = coin.into_weak_parts();
+    // тут были memo и amount_sat
 
-    let amount_sat = try_fus!(sat_from_big_decimal(amount, coin.utxo_arc.decimals));
-    let expected_memo = MemoBytes::from_bytes(uuid).expect("Uuid length < 512");
 
-    let z_tx = match fee_tx {
-        TransactionEnum::ZTransaction(t) => t.clone(),
-        _ => panic!("Unexpected tx {:?}", fee_tx),
-    };
 
     let zero_root = Some(H256Json::default());
     while let Some(coin) = ZCoin::from_weak_parts(&utxo_weak, &z_fields_weak) {
@@ -694,12 +711,14 @@ async fn decrypted_shielded_outs(
 
                 for hash in block.tx {
 
-                    let tx = native_client
+                    let tx_bytes = native_client
                         .get_transaction_bytes(&hash)
                         .compat()
                         .await
                         .expect("Panic here to avoid storing invalid tree state to the DB");
-                    let tx: UtxoTx = deserialize(tx.as_slice()).expect("Panic here to avoid invalid tree state");
+                    let tx_z = ZTransaction::read(tx_bytes.as_slice()).unwrap();
+
+                    let tx: UtxoTx = deserialize(tx_bytes.as_slice()).expect("Panic here to avoid invalid tree state");
 
                     let tx_from_rpc = try_s!(
                         coin.rpc_client()
@@ -708,14 +727,14 @@ async fn decrypted_shielded_outs(
                         .await);
 
                     let mut encoded = Vec::with_capacity(1024);
-                    z_tx.write(&mut encoded).expect("Writing should not fail");
+                    tx_z.write(&mut encoded).expect("Writing should not fail");
                     if encoded != tx_from_rpc.hex.0 {
-                        return ERR!("Encoded transaction {} does not match the tx {} from RPC", encoded, tx_from_rpc);
+                        return ERR!("Encoded transaction {:?} does not match the tx {:?} from RPC", encoded, tx_from_rpc);
                     }
                     let block_height = match tx_from_rpc.height {
                         Some(h) => {
                             if h < min_block_number {
-                                return ERR!("Dex fee tx {:?} confirmed before min block {}", z_tx, min_block_number);
+                                return ERR!("Dex fee tx {:?} confirmed before min block {:?}", tx_z, min_block_number);
                             } else {
                                 BlockHeight::from_u32(h as u32)
                             }
@@ -723,45 +742,30 @@ async fn decrypted_shielded_outs(
                         None => H0,
                     };
 
-                    for shielded_out in z_tx.shielded_outputs.iter() {
+
+                    let mut out_index = 0;
+                    for shielded_out in tx_z.shielded_outputs.iter() {
+                        out_index += 1;
                         if let Some((note, address, memo)) =
                         try_sapling_output_recovery(&ARRRConsensusParams {}, block_height, &DEX_FEE_OVK, shielded_out)
                         {
-                            if address != coin.z_fields.dex_fee_addr {
-                                let encoded =
-                                    encode_payment_address(z_mainnet_constants::HRP_SAPLING_PAYMENT_ADDRESS, &address);
-                                let expected = encode_payment_address(
-                                    z_mainnet_constants::HRP_SAPLING_PAYMENT_ADDRESS,
-                                    &coin.z_fields.dex_fee_addr,
-                                );
-                                return ERR!( "Dex fee was sent to the invalid address {}, expected {}",  encoded, expected);
-                            }
 
-                            if note.value != amount_sat {
-                                return ERR!("Dex fee has invalid amount {}, expected {}", note.value, amount_sat);
-                            }
 
-                            if memo != expected_memo {
-                                return ERR!("Dex fee has invalid memo {:?}, expected {:?}", memo, expected_memo);
-                            }
 
-                            let txid = z_tx.txid().0;
-                            // ?
-                            let out_amount = shielded_out;
-
-                            // insert in DB transaction hash, shielded output index and output amount
 
                             let state_to_insert = TransactionShielded {
-                                txid,
-                                tx_hash: hash.into(),
-                                out_amount: 0
+                                txid: out_index,
+                                tx_hash: H256::try_from(hash).unwrap(),
+                                out_amount: note.value as i64
                             };
+
+                            // insert in DB transaction hash, shielded output index and output amount
                             insert_shielded_info(&coin.sqlite_conn(), state_to_insert)
                                 .expect("Insertion should not fail");
-
                         }
-
-                    } ERR!("The dex fee tx {:?} has no shielded outputs or outputs decryption failed", z_tx)
+                    } {
+                        return ERR!("The dex fee tx {:?} has no shielded outputs or outputs decryption failed", tx_z);
+                    }
                 }
             }
             processed_height += 1;
@@ -824,6 +828,7 @@ impl<'a> UtxoCoinWithIguanaPrivKeyBuilder for ZCoinBuilder<'a> {
 
             let sqlite = Connection::open(db_dir_path)?;
             init_db(&sqlite)?;
+            init_test_db(&sqlite)?;
             Ok(sqlite)
         })?;
 
@@ -863,6 +868,20 @@ impl<'a> UtxoCoinWithIguanaPrivKeyBuilder for ZCoinBuilder<'a> {
 
         z_coin.z_rpc().z_import_key(&my_z_key_encoded).compat().await?;
         spawn(sapling_state_cache_loop(z_coin.clone()));
+
+        let z_coin_clone = z_coin.clone();
+        spawn(async move {
+            let tx_hex = "0400008085202f89000000000000af330000e803000000000000015c3fc69c0eb25dc2b75593464af5b937da35816a2ffeb9b79f3da865c2187083a0b143011810109ab0ed410896aff77bcfbc8a8f5b9bfe0d273716095cfe401cbd97c66a999384aa12a571abc39508b113de0ad0816630fea67f18d68572c52be4364f812f9796e1084ee6c28d1419dac4767d12a7a33662536c2c1ffa7e221d843c9f2bf2601f34cc71a1e1c42041fab87e617ae00b796aa070280060e9cdc30e69e80367e6105e792bbefcd93f00c48ce8278c4eb36c8846cb94d5adcb273ce91decf79196461f7969d6a7031878c6c8e81edd4532a5c57bbaeeea4ed5f4440cef90f19020079c69e05325e63350e9cb9eac44a3d4937111a3c6dc00c79d4dfe72c1e73a6e00ad0aa1aded83f0b778ab92319fcdae19c2946c50c370d243fe6dfa4f92803dcec1992af0d91f0cda8ccbee2a5321f708fc0156d29b51a015b3fb70f543c7713b8547d24e6916caefca17edf1f4109099177498cb30f9305b5169ab1f2e3e4a83e789b5687f3f5f5013d917e2e6babc8ca4507cb349d1e5a30602f557bcbd6574c7fcb5779ce286bdd10fe5db58abadcacf5eaa9e5d3575e30e439d0c62494bc045456e7b6b03f5304a8ff8878f01883f8c473e066f8159bdc111a03d96670f4b29acd919d8b9674897e056c7ac6ef4da155ce7d923f2bedcd51f2198c2be360e03ef2373df94d1e63ba507effc2f9b2f1ccfed09f2f26b8c619415d4a90f556e4b9350099f58fb10a33986945a1512879fdae66e9ef94671764ecdc558ed2d760f7bd3ce2dedfdb4fc7e3aa26903288e16f34214632d8727f68d47389ff687f681b3b285896d3214b9eb60271d87f3223f20e4ddf39513c07fe3420eefa9e7372fff51c83468161d9ffe745533b02917e4ccf87a213c884042938511bb7ccbe6b54392897b1ba111d127ec2c16ba167bb5a65d7819295ceedc5b8faf493c71ed722b72578c62be7d59449bd218196e1f43c3a8bb4875c3bcce1adcb6c4afa6398a7276583c60dbe609c9819bf66385e6cff4b27090aa1dccd0a2f86ca3b3871f2077db44c17d57bba98f9809e6000676600ad70560cbf285354f979d24a5de6e8b0c65ee1a89e28f58f430d20988cae8b0a9690cf79519efc227d54ca739ce3dcde73ac6e624c00b120d6955b40b854b00b1b53dc18cc35cd4792716f3e0bc6552bf0ba4616d1b22900cebede31fbe4b722de1f11c0577abe2ca0614c9d6f24cb56e2b4c840b8573c503ca1d4bf9e671a583b04dd51af10cfc709e89965c5150d7fb6b8c924812e6c9d31025d30e8367defb39e71fda095a16c0e1a70b528799d8c4852b3adb700b113bf5de1d6ec6c7742a1ef678228930ec767e406b36a55fe4a8108236cf0487901e35b50312facad257fd9ba2be154fbc674b33240fffaffc149f26238c5b188107df049cc615289ab8ee6f12a868379f6e362b059ba7c3dde3f02a91a08316c194ad7e556d390d38e6442212502f84cb22fc7dbab262984d2155ebeee3e4109033e57e761e9ab701512cf2635fe92f12d42953ce33f020ad4606125477318f88f673517831f43e548c5ef1d6d4aef7d850fdc0d35bc38a69ac02ccc7436eb711c6303cd306b34931bf1a4cbaed6940ede588e2abf7835718e4afed606d71cdb48146598db31d024347ba9eb289f714bfa7a3670392b3a5e35b6359f6626ed07cca451f0389e4423bb531baf409c48279df489d0073ccf17676eb5c5caa732b104894c2bcf311774f1f8c0b8b6fa313437bc1209f29ee64ccb40a07bb0cf928c77ca6b6a4fe287b1dc6df678a32b8dda35876211d5f929f90a6cc772bd171d15f50da9de8f11a241be98d205b2c53a78a5ba1bce0e782ee88512c3fc815fe843c6b5ffae1b80f1bdd5132b84a813e5157d3096034011fec2f0543f9c30a119d87e8b66e9a857d833d45fe55352871f68aaf8757c03f3b82f1cbd13c56d1843b9d2ebf7fe42f41ab0493dc9491813456fd1e0466bfdfb87a684cba8944df2fd8d3703617383137613a853a3725b366079c3760bbce60f2a88fa2cc579a6ddc9813185cb26873e6c09e43b6db73e4a44d30eebdae38bdaae9f6f1c38941b342ba67822b039f35878e54aadc4b1861df8803494f739d07b0d8b7815d1b55932bcdda80f612f97e0a0c288a7daf3aee1eb0db33fa030082b439a6d0c8d1043a718747acc398913f89e09cb0c95be96fdc9b8aa01f8eba0bd543528035fb7442ce9c6fa5e5539d4dfe29f2a9400d2d122d61037b9df584c5738b851a0d8f6bb6cf553efbdeefc3db3718681a75cb90398fa54c8dd1e696de8dba5ec977c4e2909f4977fde39847f2c0d8f9f9927e9a6cc9466b90d7745e678baa32100cb1ca7d2969c6ec9f35b222f3f4126a7965c40e5da75f183f73d33d325f25a371f5767c6b5bca141c30ed409ffce5f8e073bfb0a85512d0594c96b80cd5d7b73ac3dca494aa9dc7085ad594b46eb28fd1df84afc8a71dd63bc5d23eaf21238706a205d643bd238fe01b32dcd50c93047498ed54bb01cf2108d326f7e3c0538a9e6cc79090ccee6cf47e7fd3cc5cf41aad6905c5d099cea22effdcd4bb7b8d85ba3e3d703c34863d2540936976c774e5c4cb020873873a186c3bab67b1a47c4029f2880cbadd1cd7d82a6c649b073aa0c938b5f28e9173a64c72c81745bc8df6706bf6e320b5e96820970322f21d633a2c28b23d79b8edbc8a13eafa2a5241d7bb59b341779fe6f5db2994567caefaec23b7b7c55a73dbc6614bb958bc1d62838c56197a3eceefeb1dc4f505645548f2dd8848e4046aca421548235f1945725f82f03b0ba5c774ddea6f9524cdcc302ee4712ef7d4bc1c16d7aa578d8fd8ceb680c16fcc6ca6a40afdcef6f89e81bd92f7d1f6e39c9c57f3239a1fcb23d649f8757348214572e53bc2c2c7ff8bce6d48df6e3c53ab7014a55c9296d05998a0d1b53749d9561541eb0cf6e1bfa65141ce9b6c30fe4f68cd8e869feba82675ec43bf953ab2994533d6d1af1705130243d9b9ee4088b635d6b4db5603b8784f4fe77d4b0d8a7935c06198d12fa0fc6e1ad2ddef96e7f9ab6103a2a29739ca3af9fe1736cdf49162e77d6f17d063f04dc2e1358af3da993fb3824e59575a9f15c7c429efd059477429be0c2a5b126078a8f8b1088d35aae59eac0897dfa4d45179947bad401c7417df2fac46f8782a2069f83cc18eda4d0070167878ad72f5d255e300a6368e0d390d3d0206aba68772b1e9d73c97406a0a5d80b7b8360502a9e7cb471fb5bd49ce9eee3a16f82aadca47327ccaa00a0575ed7191ffb710dd1ab7f801";
+            let tx_bytes = hex::decode(tx_hex).unwrap();
+            let tx = ZTransaction::read(tx_bytes.as_slice()).unwrap();
+            let tx = tx.into();
+            decrypted_shielded_outs(
+                z_coin_clone,
+                12000,
+                &tx,
+                &"0.01".parse().unwrap(),
+                &[1; 16]).await.unwrap();
+        });
         Ok(z_coin)
     }
 }
