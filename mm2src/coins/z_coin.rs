@@ -747,8 +747,6 @@ async fn decrypted_shielded_outs (coin: ZCoin) -> Result<(), String> {
         coin.z_fields.sapling_state_synced.store(true, AtomicOrdering::Relaxed);
         drop(coin);
         Timer::sleep(10.).await;
-        log::info!("Result records {:?}", count_records);
-        log::info!("DECRYPTION FINISHED");
     }
     Ok(())
 }
