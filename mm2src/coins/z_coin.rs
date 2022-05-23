@@ -656,7 +656,7 @@ fn insert_shielded_info(conn: &Connection, tx: TransactionShielded) -> Result<()
 async fn decrypted_shielded_outs (coin: ZCoin) -> Result<(), String> {
 
     let query = tokio::task::block_in_place(|| query_first_block(&coin.sqlite_conn()));
-    let (mut processed_height, mut current_tree) = match query {
+    let (mut processed_height, current_tree) = match query {
         Ok(state) => {
             let mut tree = state.prev_tree_state;
             for cmu in state.cmus {
@@ -713,7 +713,7 @@ async fn decrypted_shielded_outs (coin: ZCoin) -> Result<(), String> {
 
                     let tx_from_rpc = try_s!(
                         coin.rpc_client()
-                        .get_verbose_transaction(&hash.into())
+                        .get_verbose_transaction(&hash)
                         .compat()
                         .await);
 
@@ -725,7 +725,7 @@ async fn decrypted_shielded_outs (coin: ZCoin) -> Result<(), String> {
                     let mut out_index = 0;
                     for shielded_out in tx_z.shielded_outputs.iter() {
                         out_index += 1;
-                        if let Some((note, address, memo)) =
+                        if let Some((note, _address, _memo)) =
                         try_sapling_output_recovery(&ARRRConsensusParams {}, block_height, &DEX_FEE_OVK, shielded_out)
                         {
                             id_out += 1;
