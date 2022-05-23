@@ -624,7 +624,6 @@ async fn sapling_state_cache_loop(coin: ZCoin) {
         Timer::sleep(10.).await;
     }
 }
-// test code
 
 struct TransactionShielded {
     id_out: i32,
@@ -632,9 +631,9 @@ struct TransactionShielded {
     tx_hash: H256,
     out_amount: i64,
 }
-// удалить z_shielded, z_shielded_outs, z_outs
-fn init_test_db(sql: &Connection) -> Result<(), SqliteError> {
-    const INIT_SAPLING_CACHE_TABLE_STMT: &str = "CREATE TABLE IF NOT EXISTS z_shielded_outputs (
+
+fn init_shielded_db(sql: &Connection) -> Result<(), SqliteError> {
+    const INIT_SAPLING_CACHE_TABLE_STMT: &str = "CREATE TABLE IF NOT EXISTS z_shielded (
         id_out INTEGER NOT NULL PRIMARY KEY,
         out_index INTEGER NOT NULL,
         tx_hash BLOB NOT NULL,
@@ -645,7 +644,7 @@ fn init_test_db(sql: &Connection) -> Result<(), SqliteError> {
 }
 
 fn insert_shielded_info(conn: &Connection, tx: TransactionShielded) -> Result<(), SqliteError> {
-    const INSERT_INFO: &str = "INSERT INTO z_shielded_outputs (id_out, out_index, tx_hash, out_amount) VALUES (?1, ?2, ?3, ?4);";
+    const INSERT_INFO: &str = "INSERT INTO z_shielded (id_out, out_index, tx_hash, out_amount) VALUES (?1, ?2, ?3, ?4);";
     let id_out = tx.id_out.to_sql()?;
     let out_index = tx.out_index.to_sql()?;
     let tx_hash = tx.tx_hash.to_sql()?;
@@ -680,14 +679,11 @@ async fn decrypted_shielded_outs (coin: ZCoin) -> Result<(), String> {
                 continue;
             },
         };
-        log::info!("Current block received: {:?}", current_block);
-        log::info!("Processed height before loop: {:?}", processed_height);
 
         let native_client = match coin.rpc_client() {
             UtxoRpcClientEnum::Native(n) => n,
             _ => unimplemented!("Implemented only for native client"),
         };
-        let mut count_records = 0;
         let mut id_out = 0;
 
         while processed_height as u64 <= current_block {
@@ -739,18 +735,14 @@ async fn decrypted_shielded_outs (coin: ZCoin) -> Result<(), String> {
                                 tx_hash: H256::try_from(hash).unwrap(),
                                 out_amount: note.value as i64
                             };
-                            log::info!("Recording to the database shielded out: {:?}", shielded_out);
-                            // insert in DB transaction hash, shielded output index and output amount
+
                             insert_shielded_info(&coin.sqlite_conn(), state_to_insert)
                                 .expect("Insertion should not fail");
-                            count_records += 1;
-                            log::info!("Number of records is: {:?}", count_records);
                         }
                     }
                 }
             }
             processed_height += 1;
-            log::info!("processed height is {:?} from {:?}", processed_height, current_block);
         }
         coin.z_fields.sapling_state_synced.store(true, AtomicOrdering::Relaxed);
         drop(coin);
@@ -760,7 +752,6 @@ async fn decrypted_shielded_outs (coin: ZCoin) -> Result<(), String> {
     }
     Ok(())
 }
-// test code
 
 pub struct ZCoinBuilder<'a> {
     ctx: &'a MmArc,
@@ -812,8 +803,7 @@ impl<'a> UtxoCoinWithIguanaPrivKeyBuilder for ZCoinBuilder<'a> {
 
             let sqlite = Connection::open(db_dir_path)?;
             init_db(&sqlite)?;
-            init_test_db(&sqlite)?;
-            log::info!("init test db");
+            init_shielded_db(&sqlite)?;
             Ok(sqlite)
         })?;
 
@@ -855,12 +845,9 @@ impl<'a> UtxoCoinWithIguanaPrivKeyBuilder for ZCoinBuilder<'a> {
         spawn(sapling_state_cache_loop(z_coin.clone()));
 
         let z_coin_clone = z_coin.clone();
-        //spawn(async move {
-            //decrypted_shielded_outs(z_coin_clone).await.unwrap();
-        //);
-
-        spawn(decrypted_shielded_outs(z_coin_clone));
-        log::info!("decrypted_shielded_outs was spawned");
+        spawn(async move {
+            decrypted_shielded_outs(z_coin_clone).await.unwrap()
+        });
         Ok(z_coin)
     }
 }
