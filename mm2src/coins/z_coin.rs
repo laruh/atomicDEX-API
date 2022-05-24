@@ -651,8 +651,7 @@ fn insert_shielded_info(conn: &Connection, tx: TransactionShielded) -> Result<()
     conn.execute(INSERT_INFO, &[out_index, tx_hash, out_amount]).map(|_| ())
 }
 
-async fn decrypted_shielded_outs (coin: ZCoin) -> Result<(), String> {
-
+async fn decrypted_shielded_outs(coin: ZCoin) -> Result<(), String> {
     let query = tokio::task::block_in_place(|| query_first_block(&coin.sqlite_conn()));
     let (mut processed_height, current_tree) = match query {
         Ok(state) => {
@@ -707,11 +706,7 @@ async fn decrypted_shielded_outs (coin: ZCoin) -> Result<(), String> {
                         .expect("Panic here to avoid storing invalid tree state to the DB");
                     let tx_z = ZTransaction::read(tx_bytes.as_slice()).unwrap();
 
-                    let tx_from_rpc = try_s!(
-                        coin.rpc_client()
-                        .get_verbose_transaction(&hash)
-                        .compat()
-                        .await);
+                    let tx_from_rpc = try_s!(coin.rpc_client().get_verbose_transaction(&hash).compat().await);
 
                     let block_height = match tx_from_rpc.height {
                         Some(h) => BlockHeight::from_u32(h as u32),
@@ -719,13 +714,16 @@ async fn decrypted_shielded_outs (coin: ZCoin) -> Result<(), String> {
                     };
 
                     for (out_index, shielded_out) in tx_z.shielded_outputs.iter().enumerate() {
-                        if let Some((note, _address, _memo)) =
-                        try_sapling_output_recovery(&ARRRConsensusParams {}, block_height, &DEX_FEE_OVK, shielded_out)
-                        {
+                        if let Some((note, _address, _memo)) = try_sapling_output_recovery(
+                            &ARRRConsensusParams {},
+                            block_height,
+                            &DEX_FEE_OVK,
+                            shielded_out,
+                        ) {
                             let state_to_insert = TransactionShielded {
                                 out_index: out_index as i32,
                                 tx_hash: hash.into(),
-                                out_amount: note.value as i64
+                                out_amount: note.value as i64,
                             };
 
                             insert_shielded_info(&coin.sqlite_conn(), state_to_insert)
@@ -835,9 +833,7 @@ impl<'a> UtxoCoinWithIguanaPrivKeyBuilder for ZCoinBuilder<'a> {
         spawn(sapling_state_cache_loop(z_coin.clone()));
 
         let z_coin_clone = z_coin.clone();
-        spawn(async move {
-            decrypted_shielded_outs(z_coin_clone).await.unwrap()
-        });
+        spawn(async move { decrypted_shielded_outs(z_coin_clone).await.unwrap() });
         Ok(z_coin)
     }
 }
