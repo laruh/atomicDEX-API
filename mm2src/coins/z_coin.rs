@@ -626,15 +626,14 @@ async fn sapling_state_cache_loop(coin: ZCoin) {
 }
 
 struct TransactionShielded {
-    id_out: i32,
     out_index: i32,
     tx_hash: H256,
     out_amount: i64,
 }
 
-fn init_shielded_db(sql: &Connection) -> Result<(), SqliteError> {
-    const INIT_SAPLING_CACHE_TABLE_STMT: &str = "CREATE TABLE IF NOT EXISTS z_shielded (
-        id_out INTEGER NOT NULL PRIMARY KEY,
+fn create_shielded_dex_fees(sql: &Connection) -> Result<(), SqliteError> {
+    const INIT_SAPLING_CACHE_TABLE_STMT: &str = "CREATE TABLE IF NOT EXISTS shielded_dex_fees (
+        id INTEGER NOT NULL PRIMARY KEY,
         out_index INTEGER NOT NULL,
         tx_hash BLOB NOT NULL,
         out_amount INTEGER
@@ -644,13 +643,12 @@ fn init_shielded_db(sql: &Connection) -> Result<(), SqliteError> {
 }
 
 fn insert_shielded_info(conn: &Connection, tx: TransactionShielded) -> Result<(), SqliteError> {
-    const INSERT_INFO: &str = "INSERT INTO z_shielded (id_out, out_index, tx_hash, out_amount) VALUES (?1, ?2, ?3, ?4);";
-    let id_out = tx.id_out.to_sql()?;
+    const INSERT_INFO: &str = "INSERT INTO shielded_dex_fees (out_index, tx_hash, out_amount) VALUES (?1, ?2, ?3);";
     let out_index = tx.out_index.to_sql()?;
     let tx_hash = tx.tx_hash.to_sql()?;
     let out_amount = tx.out_amount.to_sql()?;
 
-    conn.execute(INSERT_INFO, &[id_out, out_index, tx_hash, out_amount]).map(|_| ())
+    conn.execute(INSERT_INFO, &[out_index, tx_hash, out_amount]).map(|_| ())
 }
 
 async fn decrypted_shielded_outs (coin: ZCoin) -> Result<(), String> {
@@ -670,7 +668,6 @@ async fn decrypted_shielded_outs (coin: ZCoin) -> Result<(), String> {
 
     let zero_root = Some(H256Json::default());
     while let Some(coin) = ZCoin::from_weak_parts(&utxo_weak, &z_fields_weak) {
-        coin.z_fields.sapling_state_synced.store(false, AtomicOrdering::Relaxed);
         let current_block = match coin.rpc_client().get_block_count().compat().await {
             Ok(b) => b,
             Err(e) => {
@@ -684,7 +681,6 @@ async fn decrypted_shielded_outs (coin: ZCoin) -> Result<(), String> {
             UtxoRpcClientEnum::Native(n) => n,
             _ => unimplemented!("Implemented only for native client"),
         };
-        let mut id_out = 0;
 
         while processed_height as u64 <= current_block {
             let block = match native_client.get_block_by_height(processed_height as u64).await {
@@ -722,17 +718,13 @@ async fn decrypted_shielded_outs (coin: ZCoin) -> Result<(), String> {
                         None => H0,
                     };
 
-                    let mut out_index = 0;
-                    for shielded_out in tx_z.shielded_outputs.iter() {
-                        out_index += 1;
+                    for (out_index, shielded_out) in tx_z.shielded_outputs.iter().enumerate() {
                         if let Some((note, _address, _memo)) =
                         try_sapling_output_recovery(&ARRRConsensusParams {}, block_height, &DEX_FEE_OVK, shielded_out)
                         {
-                            id_out += 1;
                             let state_to_insert = TransactionShielded {
-                                id_out,
-                                out_index,
-                                tx_hash: H256::try_from(hash).unwrap(),
+                                out_index: out_index as i32,
+                                tx_hash: hash.into(),
                                 out_amount: note.value as i64
                             };
 
@@ -801,7 +793,7 @@ impl<'a> UtxoCoinWithIguanaPrivKeyBuilder for ZCoinBuilder<'a> {
 
             let sqlite = Connection::open(db_dir_path)?;
             init_db(&sqlite)?;
-            init_shielded_db(&sqlite)?;
+            create_shielded_dex_fees(&sqlite)?;
             Ok(sqlite)
         })?;
 
