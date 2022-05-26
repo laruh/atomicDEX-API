@@ -240,8 +240,6 @@ pub use solana::{solana_coin_from_conf_and_params, SolanaActivationParams, Solan
 #[cfg(target_arch = "wasm32")] pub mod tx_history_db;
 pub mod utxo;
 #[cfg(not(target_arch = "wasm32"))] pub mod z_coin;
-pub mod z_transactions_draft;
-mod z_transactions;
 
 use eth::{eth_coin_from_conf_and_request, EthCoin, EthTxFeeDetails, SignedEthTx};
 use hd_wallet::{HDAddress, HDAddressId};
