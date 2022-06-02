@@ -21,7 +21,6 @@
 use async_trait::async_trait;
 use bigdecimal::BigDecimal;
 use bitcrypto::{keccak256, sha256};
-use common::custom_futures::TimedAsyncMutex;
 use common::executor::Timer;
 use common::log::error;
 use common::{now_ms, small_rng, DEX_FEE_ADDR_RAW_PUBKEY};
@@ -66,7 +65,7 @@ pub use ethcore_transaction::SignedTransaction as SignedEthTx;
 pub use rlp;
 
 mod web3_transport;
-use crate::{TransactionErr, TransactionFut, ValidatePaymentInput};
+use crate::{AsyncMutex, TransactionErr, TransactionFut, ValidatePaymentInput};
 use common::mm_number::MmNumber;
 use ethkey::{sign, verify_address};
 use serialization::{CompactInteger, Serializable, Stream};
@@ -303,6 +302,7 @@ pub struct EthCoinImpl {
     chain_id: Option<u64>,
     /// the block range used for eth_getLogs
     logs_block_range: u64,
+    nonce_lock: Arc<AsyncMutex<()>>,
 }
 
 #[derive(Clone, Debug)]
@@ -545,7 +545,7 @@ async fn get_raw_transaction_impl(coin: EthCoin, req: RawTransactionRequest) -> 
     })
 }
 
-async fn withdraw_impl(ctx: MmArc, coin: EthCoin, req: WithdrawRequest) -> WithdrawResult {
+async fn withdraw_impl(_ctx: MmArc, coin: EthCoin, req: WithdrawRequest) -> WithdrawResult {
     let to_addr = coin
         .address_from_str(&req.to)
         .map_to_mm(WithdrawError::InvalidAddress)?;
@@ -621,15 +621,7 @@ async fn withdraw_impl(ctx: MmArc, coin: EthCoin, req: WithdrawRequest) -> Withd
         eth_value -= total_fee;
         wei_amount -= total_fee;
     };
-    let _nonce_lock = NONCE_LOCK
-        .lock(|_start, _now| {
-            if ctx.is_stopping() {
-                let error = "MM is stopping, aborting withdraw_impl in NONCE_LOCK".to_owned();
-                return MmError::err(WithdrawError::InternalError(error));
-            }
-            Ok(0.5)
-        })
-        .await?;
+    let _nonce_lock = coin.nonce_lock.lock().await;
     let nonce_fut = get_addr_nonce(coin.my_address, coin.web3_instances.clone()).compat();
     let nonce = match select(nonce_fut, Timer::sleep(30.)).await {
         Either::Left((nonce_res, _)) => nonce_res.map_to_mm(WithdrawError::Transport)?,
@@ -1377,7 +1369,7 @@ pub fn signed_eth_tx_from_bytes(bytes: &[u8]) -> Result<SignedEthTx, String> {
 // For ETH it makes even more sense because different ERC20 tokens can be running on same ETH blockchain.
 // So we would need to handle shared locks anyway.
 lazy_static! {
-    static ref NONCE_LOCK: TimedAsyncMutex<()> = TimedAsyncMutex::new(());
+    static ref STATE: Arc<AsyncMutex<()>> = Arc::new(AsyncMutex::new(()));
 }
 
 type EthTxFut = Box<dyn Future<Item = SignedEthTx, Error = TransactionErr> + Send + 'static>;
@@ -1396,17 +1388,7 @@ async fn sign_and_send_transaction_impl(
             &[&"sign-and-send"]
         };
     }
-    let _nonce_lock = NONCE_LOCK
-        .lock(|start, now| {
-            if ctx.is_stopping() {
-                return ERR!("MM is stopping, aborting sign_and_send_transaction_impl in NONCE_LOCK");
-            }
-            if start < now {
-                status.status(tags!(), "Waiting for NONCE_LOCK…")
-            }
-            Ok(0.5)
-        })
-        .await;
+    let _nonce_lock = coin.nonce_lock.lock().await;
     status.status(tags!(), "get_addr_nonce…");
     let nonce = try_tx_s!(
         get_addr_nonce(coin.my_address, coin.web3_instances.clone())
@@ -3487,6 +3469,7 @@ pub async fn eth_coin_from_conf_and_request(
         required_confirmations,
         chain_id: conf["chain_id"].as_u64(),
         logs_block_range: conf["logs_block_range"].as_u64().unwrap_or(DEFAULT_LOGS_BLOCK_RANGE),
+        nonce_lock: Arc::clone(&STATE),
     };
     Ok(EthCoin(Arc::new(coin)))
 }
