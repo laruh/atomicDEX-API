@@ -22,6 +22,10 @@ and we use [rustfmt](https://github.com/rust-lang/rustfmt) to make our code clea
     ```shell
     cargo clippy -- -D warnings
     ```
+   Install cargo deny
+   ```shell
+   cargo install --locked cargo-deny && cargo deny check
+   ```
 3. Make sure that no new dependencies duplicates appear. Run the following check   
    ```shell
    cargo deny check bans
@@ -29,10 +33,6 @@ and we use [rustfmt](https://github.com/rust-lang/rustfmt) to make our code clea
 4. Make sure that dependencies do not have known vulnerabilities. If they do, update them.
    ```shell
    cargo deny check advisories
-   ```
-   If you have problems with plugin, install it manually
-   ```shell
-   cargo install --locked cargo-deny && cargo deny check
    ```
 
 ### Run WASM tests

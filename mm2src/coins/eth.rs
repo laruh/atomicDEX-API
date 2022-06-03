@@ -12,6 +12,7 @@
  * Removal or modification of this copyright notice is prohibited.            *
  *                                                                            *
  ******************************************************************************/
+use std::borrow::Borrow;
 //
 //  eth.rs
 //  marketmaker
@@ -545,7 +546,7 @@ async fn get_raw_transaction_impl(coin: EthCoin, req: RawTransactionRequest) -> 
     })
 }
 
-async fn withdraw_impl(_ctx: MmArc, coin: EthCoin, req: WithdrawRequest) -> WithdrawResult {
+async fn withdraw_impl(coin: EthCoin, req: WithdrawRequest) -> WithdrawResult {
     let to_addr = coin
         .address_from_str(&req.to)
         .map_to_mm(WithdrawError::InvalidAddress)?;
@@ -1369,7 +1370,7 @@ pub fn signed_eth_tx_from_bytes(bytes: &[u8]) -> Result<SignedEthTx, String> {
 // For ETH it makes even more sense because different ERC20 tokens can be running on same ETH blockchain.
 // So we would need to handle shared locks anyway.
 lazy_static! {
-    static ref STATE: Arc<AsyncMutex<()>> = Arc::new(AsyncMutex::new(()));
+    static ref NONCE_LOCK: Mutex<HashMap<String, Arc<AsyncMutex<()>>>> = Mutex::new(HashMap::new());
 }
 
 type EthTxFut = Box<dyn Future<Item = SignedEthTx, Error = TransactionErr> + Send + 'static>;
@@ -2959,8 +2960,7 @@ impl MmCoin for EthCoin {
     }
 
     fn withdraw(&self, req: WithdrawRequest) -> WithdrawFut {
-        let ctx = try_f!(MmArc::from_weak(&self.ctx).or_mm_err(|| WithdrawError::InternalError("!ctx".to_owned())));
-        Box::new(Box::pin(withdraw_impl(ctx, self.clone(), req)).compat())
+        Box::new(Box::pin(withdraw_impl(self.clone(), req)).compat())
     }
 
     fn decimals(&self) -> u8 { self.decimals }
@@ -3450,6 +3450,22 @@ pub async fn eth_coin_from_conf_and_request(
     let gas_station_policy: GasStationPricePolicy =
         json::from_value(req["gas_station_policy"].clone()).unwrap_or_default();
 
+    let key_lock = match coin_type.borrow() {
+        EthCoinType::Eth => String::from(ticker),
+        EthCoinType::Erc20 { ref platform, .. } => String::from(platform),
+    };
+
+    let mut map = NONCE_LOCK.lock().unwrap();
+    // NONCE_LOCK.get_mut();
+
+    let nonce_lock = match map.contains_key(&*key_lock) {
+        true => Arc::clone(map.get(&*key_lock).unwrap()),
+        false => {
+            map.insert(key_lock.clone(), Arc::new(AsyncMutex::new(())));
+            Arc::clone(map.get(&*key_lock).unwrap())
+        },
+    };
+
     let coin = EthCoinImpl {
         key_pair,
         my_address,
@@ -3469,7 +3485,7 @@ pub async fn eth_coin_from_conf_and_request(
         required_confirmations,
         chain_id: conf["chain_id"].as_u64(),
         logs_block_range: conf["logs_block_range"].as_u64().unwrap_or(DEFAULT_LOGS_BLOCK_RANGE),
-        nonce_lock: Arc::clone(&STATE),
+        nonce_lock,
     };
     Ok(EthCoin(Arc::new(coin)))
 }

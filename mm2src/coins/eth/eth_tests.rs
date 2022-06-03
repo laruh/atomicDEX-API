@@ -645,7 +645,7 @@ fn test_search_for_swap_tx_spend_was_refunded() {
 
 #[test]
 fn test_withdraw_impl_manual_fee() {
-    let (ctx, coin) = eth_coin_for_test(EthCoinType::Eth, vec!["http://dummy.dummy".into()], None);
+    let (_ctx, coin) = eth_coin_for_test(EthCoinType::Eth, vec!["http://dummy.dummy".into()], None);
 
     EthCoin::my_balance.mock_safe(|_| {
         let balance = wei_from_big_decimal(&1000000000.into(), 18).unwrap();
@@ -666,7 +666,7 @@ fn test_withdraw_impl_manual_fee() {
     };
     coin.my_balance().wait().unwrap();
 
-    let tx_details = block_on(withdraw_impl(ctx, coin.clone(), withdraw_req)).unwrap();
+    let tx_details = block_on(withdraw_impl(coin.clone(), withdraw_req)).unwrap();
     let expected = Some(
         EthTxFeeDetails {
             coin: "ETH".into(),
@@ -681,7 +681,7 @@ fn test_withdraw_impl_manual_fee() {
 
 #[test]
 fn test_withdraw_impl_fee_details() {
-    let (ctx, coin) = eth_coin_for_test(
+    let (_ctx, coin) = eth_coin_for_test(
         EthCoinType::Erc20 {
             platform: "ETH".to_string(),
             token_addr: Address::from("0x2b294F029Fde858b2c62184e8390591755521d8E"),
@@ -709,7 +709,7 @@ fn test_withdraw_impl_fee_details() {
     };
     coin.my_balance().wait().unwrap();
 
-    let tx_details = block_on(withdraw_impl(ctx, coin.clone(), withdraw_req)).unwrap();
+    let tx_details = block_on(withdraw_impl(coin.clone(), withdraw_req)).unwrap();
     let expected = Some(
         EthTxFeeDetails {
             coin: "ETH".into(),
