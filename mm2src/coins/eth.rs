@@ -3456,7 +3456,6 @@ pub async fn eth_coin_from_conf_and_request(
     };
 
     let mut map = NONCE_LOCK.lock().unwrap();
-    // NONCE_LOCK.get_mut();
 
     let nonce_lock = match map.contains_key(&*key_lock) {
         true => Arc::clone(map.get(&*key_lock).unwrap()),
