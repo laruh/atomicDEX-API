@@ -1365,7 +1365,7 @@ pub fn signed_eth_tx_from_bytes(bytes: &[u8]) -> Result<SignedEthTx, String> {
     Ok(signed)
 }
 
-// We can use a shared nonce lock for all ETH coins.
+// We can use a nonce lock shared between tokens using the same platform coin and the platform itself.
 // It's highly likely that we won't experience any issues with it as we won't need to send "a lot" of transactions concurrently.
 // For ETH it makes even more sense because different ERC20 tokens can be running on same ETH blockchain.
 // So we would need to handle shared locks anyway.
