@@ -24,7 +24,7 @@ and we use [rustfmt](https://github.com/rust-lang/rustfmt) to make our code clea
     ```
    Install cargo deny
    ```shell
-   cargo install --locked cargo-deny && cargo deny check
+   cargo install --locked cargo-deny
    ```
 3. Make sure that no new dependencies duplicates appear. Run the following check   
    ```shell

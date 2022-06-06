@@ -12,7 +12,6 @@
  * Removal or modification of this copyright notice is prohibited.            *
  *                                                                            *
  ******************************************************************************/
-use std::borrow::Borrow;
 //
 //  eth.rs
 //  marketmaker
@@ -1366,9 +1365,7 @@ pub fn signed_eth_tx_from_bytes(bytes: &[u8]) -> Result<SignedEthTx, String> {
 }
 
 // We can use a nonce lock shared between tokens using the same platform coin and the platform itself.
-// It's highly likely that we won't experience any issues with it as we won't need to send "a lot" of transactions concurrently.
-// For ETH it makes even more sense because different ERC20 tokens can be running on same ETH blockchain.
-// So we would need to handle shared locks anyway.
+// For example, ETH/USDT-ERC20 should use the same lock, but it will be different for BNB/USDT-BEP20.
 lazy_static! {
     static ref NONCE_LOCK: Mutex<HashMap<String, Arc<AsyncMutex<()>>>> = Mutex::new(HashMap::new());
 }
@@ -3450,20 +3447,14 @@ pub async fn eth_coin_from_conf_and_request(
     let gas_station_policy: GasStationPricePolicy =
         json::from_value(req["gas_station_policy"].clone()).unwrap_or_default();
 
-    let key_lock = match coin_type.borrow() {
+    let key_lock = match &coin_type {
         EthCoinType::Eth => String::from(ticker),
         EthCoinType::Erc20 { ref platform, .. } => String::from(platform),
     };
 
     let mut map = NONCE_LOCK.lock().unwrap();
 
-    let nonce_lock = match map.contains_key(&*key_lock) {
-        true => Arc::clone(map.get(&*key_lock).unwrap()),
-        false => {
-            map.insert(key_lock.clone(), Arc::new(AsyncMutex::new(())));
-            Arc::clone(map.get(&*key_lock).unwrap())
-        },
-    };
+    let nonce_lock = Arc::clone(map.entry(key_lock).or_insert_with(|| Arc::new(AsyncMutex::new(()))));
 
     let coin = EthCoinImpl {
         key_pair,
