@@ -3351,6 +3351,9 @@ fn rpc_event_handlers_for_eth_transport(ctx: &MmArc, ticker: String) -> Vec<RpcT
     vec![CoinTransportMetrics::new(metrics, ticker, RpcClientType::Ethereum).into_shared()]
 }
 
+#[inline]
+fn new_nonce_lock() -> Arc<AsyncMutex<()>> { Arc::new(AsyncMutex::new(())) }
+
 pub async fn eth_coin_from_conf_and_request(
     ctx: &MmArc,
     ticker: &str,
@@ -3454,7 +3457,7 @@ pub async fn eth_coin_from_conf_and_request(
 
     let mut map = NONCE_LOCK.lock().unwrap();
 
-    let nonce_lock = Arc::clone(map.entry(key_lock).or_insert_with(|| Arc::new(AsyncMutex::new(()))));
+    let nonce_lock = map.entry(key_lock).or_insert_with(new_nonce_lock).clone();
 
     let coin = EthCoinImpl {
         key_pair,
