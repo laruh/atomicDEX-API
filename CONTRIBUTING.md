@@ -22,6 +22,10 @@ and we use [rustfmt](https://github.com/rust-lang/rustfmt) to make our code clea
     ```shell
     cargo clippy -- -D warnings
     ```
+   Install cargo deny
+   ```shell
+   cargo install --locked cargo-deny
+   ```
 3. Make sure there are no unused dependencies. Run the following check
    ```shell
    cargo udeps
