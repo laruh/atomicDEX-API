@@ -93,6 +93,7 @@ fn test_withdraw_to_p2sh_address_should_fail() {
         max: false,
         fee: None,
         memo: None,
+        ibc_source_channel: None,
     };
     let err = coin.withdraw(req).wait().unwrap_err().into_inner();
     let expect = WithdrawError::InvalidAddress("QRC20 can be sent to P2PKH addresses only".to_owned());
@@ -133,6 +134,7 @@ fn test_withdraw_impl_fee_details() {
             gas_price: 40,
         }),
         memo: None,
+        ibc_source_channel: None,
     };
     let tx_details = coin.withdraw(withdraw_req).wait().unwrap();
 
@@ -594,8 +596,7 @@ fn test_transfer_details_by_hash() {
     // qKVvtDqpnFGDxsDzck5jmLwdnD2jRH6aM8 is UTXO representation of 1549128bbfb33b997949b4105b6a6371c998e212 contract address
     let (_id, actual) = it.next().unwrap();
     let expected = TransactionDetails {
-        tx_hex: tx_hex.clone(),
-        tx_hash: tx_hash_bytes.to_tx_hash(),
+        tx: TransactionData::new_signed(tx_hex.clone(), tx_hash_bytes.to_tx_hash()),
         from: vec!["qXxsj5RtciAby9T7m98AgAATL4zTi4UwDG".into()],
         to: vec!["qKVvtDqpnFGDxsDzck5jmLwdnD2jRH6aM8".into()],
         total_amount: BigDecimal::from_str("0.003").unwrap(),
@@ -619,8 +620,7 @@ fn test_transfer_details_by_hash() {
 
     let (_id, actual) = it.next().unwrap();
     let expected = TransactionDetails {
-        tx_hex: tx_hex.clone(),
-        tx_hash: tx_hash_bytes.to_tx_hash(),
+        tx: TransactionData::new_signed(tx_hex.clone(), tx_hash_bytes.to_tx_hash()),
         from: vec!["qKVvtDqpnFGDxsDzck5jmLwdnD2jRH6aM8".into()],
         to: vec!["qXxsj5RtciAby9T7m98AgAATL4zTi4UwDG".into()],
         total_amount: BigDecimal::from_str("0.00295").unwrap(),
@@ -644,8 +644,7 @@ fn test_transfer_details_by_hash() {
 
     let (_id, actual) = it.next().unwrap();
     let expected = TransactionDetails {
-        tx_hex: tx_hex.clone(),
-        tx_hash: tx_hash_bytes.to_tx_hash(),
+        tx: TransactionData::new_signed(tx_hex.clone(), tx_hash_bytes.to_tx_hash()),
         from: vec!["qXxsj5RtciAby9T7m98AgAATL4zTi4UwDG".into()],
         to: vec!["qKVvtDqpnFGDxsDzck5jmLwdnD2jRH6aM8".into()],
         total_amount: BigDecimal::from_str("0.003").unwrap(),
@@ -669,8 +668,7 @@ fn test_transfer_details_by_hash() {
 
     let (_id, actual) = it.next().unwrap();
     let expected = TransactionDetails {
-        tx_hex: tx_hex.clone(),
-        tx_hash: tx_hash_bytes.to_tx_hash(),
+        tx: TransactionData::new_signed(tx_hex.clone(), tx_hash_bytes.to_tx_hash()),
         from: vec!["qKVvtDqpnFGDxsDzck5jmLwdnD2jRH6aM8".into()],
         to: vec!["qXxsj5RtciAby9T7m98AgAATL4zTi4UwDG".into()],
         total_amount: BigDecimal::from_str("0.00295").unwrap(),
@@ -694,8 +692,7 @@ fn test_transfer_details_by_hash() {
 
     let (_id, actual) = it.next().unwrap();
     let expected = TransactionDetails {
-        tx_hex,
-        tx_hash: tx_hash_bytes.to_tx_hash(),
+        tx: TransactionData::new_signed(tx_hex, tx_hash_bytes.to_tx_hash()),
         from: vec!["qKVvtDqpnFGDxsDzck5jmLwdnD2jRH6aM8".into()],
         to: vec!["qXxsj5RtciAby9T7m98AgAATL4zTi4UwDG".into()],
         total_amount: BigDecimal::from_str("0.00005000").unwrap(),

@@ -33,8 +33,8 @@ use crate::{BalanceError, BalanceFut, CheckIfMyPaymentSentArgs, CoinBalance, Coi
             RawTransactionFut, RawTransactionRequest, RawTransactionResult, RefundError, RefundPaymentArgs,
             RefundResult, SearchForSwapTxSpendInput, SendMakerPaymentSpendPreimageInput, SendPaymentArgs,
             SignRawTransactionRequest, SignatureError, SignatureResult, SpendPaymentArgs, SwapOps, TakerSwapMakerCoin,
-            TradeFee, TradePreimageFut, TradePreimageResult, TradePreimageValue, Transaction, TransactionDetails,
-            TransactionEnum, TransactionFut, TransactionResult, TxFeeDetails, TxMarshalingErr,
+            TradeFee, TradePreimageFut, TradePreimageResult, TradePreimageValue, Transaction, TransactionData,
+            TransactionDetails, TransactionEnum, TransactionFut, TransactionResult, TxFeeDetails, TxMarshalingErr,
             UnexpectedDerivationMethod, ValidateAddressResult, ValidateFeeArgs, ValidateInstructionsErr,
             ValidateOtherPubKeyErr, ValidatePaymentError, ValidatePaymentFut, ValidatePaymentInput,
             ValidateWatcherSpendInput, VerificationError, VerificationResult, WaitForHTLCTxSpendArgs, WatcherOps,
@@ -1200,7 +1200,7 @@ impl MarketCoinOps for ZCoin {
 
 #[async_trait]
 impl SwapOps for ZCoin {
-    fn send_taker_fee(&self, _fee_addr: &[u8], dex_fee: DexFee, uuid: &[u8]) -> TransactionFut {
+    fn send_taker_fee(&self, _fee_addr: &[u8], dex_fee: DexFee, uuid: &[u8], _expire_at: u64) -> TransactionFut {
         let selfi = self.clone();
         let uuid = uuid.to_owned();
         let fut = async move {
@@ -1996,8 +1996,7 @@ impl InitWithdrawCoin for ZCoin {
         let spent_by_me = big_decimal_from_sat_unsigned(data.spent_by_me, self.decimals());
 
         Ok(TransactionDetails {
-            tx_hex: tx_bytes.into(),
-            tx_hash: hex::encode(&tx_hash),
+            tx: TransactionData::new_signed(tx_bytes.into(), hex::encode(&tx_hash)),
             from: vec![self.z_fields.my_z_addr_encoded.clone()],
             to: vec![req.to],
             my_balance_change: &received_by_me - &spent_by_me,

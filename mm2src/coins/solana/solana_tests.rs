@@ -164,6 +164,7 @@ fn solana_transaction_simulations() {
                 max: false,
                 fee: None,
                 memo: None,
+                ibc_source_channel: None,
             })
             .compat(),
     )
@@ -192,6 +193,7 @@ fn solana_transaction_zero_balance() {
                 max: false,
                 fee: None,
                 memo: None,
+                ibc_source_channel: None,
             })
             .compat(),
     );
@@ -221,6 +223,7 @@ fn solana_transaction_simulations_not_enough_for_fees() {
                 max: false,
                 fee: None,
                 memo: None,
+                ibc_source_channel: None,
             })
             .compat(),
     );
@@ -255,6 +258,7 @@ fn solana_transaction_simulations_max() {
                 max: true,
                 fee: None,
                 memo: None,
+                ibc_source_channel: None,
             })
             .compat(),
     )
@@ -284,16 +288,22 @@ fn solana_test_transactions() {
                 max: false,
                 fee: None,
                 memo: None,
+                ibc_source_channel: None,
             })
             .compat(),
     )
     .unwrap();
     log!("{:?}", valid_tx_details);
 
-    let tx_str = hex::encode(&*valid_tx_details.tx_hex.0);
+    let tx_str = hex::encode(&*valid_tx_details.tx.tx_hex().unwrap().0);
     let res = block_on(sol_coin.send_raw_tx(&tx_str).compat()).unwrap();
 
-    let res2 = block_on(sol_coin.send_raw_tx_bytes(&valid_tx_details.tx_hex.0).compat()).unwrap();
+    let res2 = block_on(
+        sol_coin
+            .send_raw_tx_bytes(&valid_tx_details.tx.tx_hex().unwrap().0)
+            .compat(),
+    )
+    .unwrap();
     assert_eq!(res, res2);
 
     //log!("{:?}", res);

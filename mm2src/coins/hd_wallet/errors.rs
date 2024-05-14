@@ -156,6 +156,7 @@ impl From<HDWalletStorageError> for AccountUpdatingError {
     fn from(e: HDWalletStorageError) -> Self { AccountUpdatingError::WalletStorageError(e) }
 }
 
+#[derive(Display)]
 pub enum HDWithdrawError {
     UnexpectedFromAddress(String),
     UnknownAccount { account_id: u32 },

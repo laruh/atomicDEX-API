@@ -20,8 +20,8 @@ use crate::{BalanceFut, CheckIfMyPaymentSentArgs, CoinBalance, CoinFutSpawner, C
             RawTransactionResult, RefundError, RefundPaymentArgs, RefundResult, SearchForSwapTxSpendInput,
             SendMakerPaymentSpendPreimageInput, SendPaymentArgs, SignRawTransactionRequest, SignatureResult,
             SpendPaymentArgs, SwapOps, SwapTxTypeWithSecretHash, TakerSwapMakerCoin, TradeFee, TradePreimageError,
-            TradePreimageFut, TradePreimageResult, TradePreimageValue, TransactionDetails, TransactionEnum,
-            TransactionErr, TransactionFut, TransactionResult, TxFeeDetails, TxMarshalingErr,
+            TradePreimageFut, TradePreimageResult, TradePreimageValue, TransactionData, TransactionDetails,
+            TransactionEnum, TransactionErr, TransactionFut, TransactionResult, TxFeeDetails, TxMarshalingErr,
             UnexpectedDerivationMethod, ValidateAddressResult, ValidateFeeArgs, ValidateInstructionsErr,
             ValidateOtherPubKeyErr, ValidatePaymentInput, ValidateWatcherSpendInput, VerificationError,
             VerificationResult, WaitForHTLCTxSpendArgs, WatcherOps, WatcherReward, WatcherRewardError,
@@ -1214,7 +1214,7 @@ impl MarketCoinOps for SlpToken {
 
 #[async_trait]
 impl SwapOps for SlpToken {
-    fn send_taker_fee(&self, fee_addr: &[u8], dex_fee: DexFee, _uuid: &[u8]) -> TransactionFut {
+    fn send_taker_fee(&self, fee_addr: &[u8], dex_fee: DexFee, _uuid: &[u8], _expire_at: u64) -> TransactionFut {
         let coin = self.clone();
         let fee_pubkey = try_tx_fus!(Public::from_slice(fee_addr));
         let script_pubkey = ScriptBuilder::build_p2pkh(&fee_pubkey.address_hash().into()).into();
@@ -1722,9 +1722,8 @@ impl MmCoin for SlpToken {
 
             let tx_hash: BytesJson = signed.hash().reversed().take().to_vec().into();
             let details = TransactionDetails {
-                tx_hex: serialize(&signed).into(),
                 internal_id: tx_hash.clone(),
-                tx_hash: tx_hash.to_tx_hash(),
+                tx: TransactionData::new_signed(serialize(&signed).into(), tx_hash.to_tx_hash()),
                 from: vec![my_address_string],
                 to: vec![to_address],
                 total_amount,

@@ -908,7 +908,7 @@ impl Deref for EthCoin {
 
 #[async_trait]
 impl SwapOps for EthCoin {
-    fn send_taker_fee(&self, fee_addr: &[u8], dex_fee: DexFee, _uuid: &[u8]) -> TransactionFut {
+    fn send_taker_fee(&self, fee_addr: &[u8], dex_fee: DexFee, _uuid: &[u8], _expire_at: u64) -> TransactionFut {
         let address = try_tx_fus!(addr_from_raw_pubkey(fee_addr));
 
         Box::new(
@@ -2929,8 +2929,10 @@ impl EthCoin {
                     coin: self.ticker.clone(),
                     fee_details: fee_details.map(|d| d.into()),
                     block_height: trace.block_number,
-                    tx_hash: format!("{:02x}", BytesJson(raw.hash.as_bytes().to_vec())),
-                    tx_hex: BytesJson(rlp::encode(&raw).to_vec()),
+                    tx: TransactionData::new_signed(
+                        BytesJson(rlp::encode(&raw).to_vec()),
+                        format!("{:02x}", BytesJson(raw.hash.as_bytes().to_vec())),
+                    ),
                     internal_id,
                     timestamp: block.timestamp.into_or_max(),
                     kmd_rewards: None,
@@ -3300,8 +3302,10 @@ impl EthCoin {
                     coin: self.ticker.clone(),
                     fee_details: fee_details.map(|d| d.into()),
                     block_height: block_number.as_u64(),
-                    tx_hash: format!("{:02x}", BytesJson(raw.hash.as_bytes().to_vec())),
-                    tx_hex: BytesJson(rlp::encode(&raw).to_vec()),
+                    tx: TransactionData::new_signed(
+                        BytesJson(rlp::encode(&raw).to_vec()),
+                        format!("{:02x}", BytesJson(raw.hash.as_bytes().to_vec())),
+                    ),
                     internal_id: BytesJson(internal_id.to_vec()),
                     timestamp: block.timestamp.into_or_max(),
                     kmd_rewards: None,

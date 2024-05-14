@@ -8,8 +8,8 @@ use crate::{BalanceFut, CheckIfMyPaymentSentArgs, CoinFutSpawner, ConfirmPayment
             RawTransactionRequest, RawTransactionResult, RefundError, RefundPaymentArgs, RefundResult,
             SearchForSwapTxSpendInput, SendMakerPaymentSpendPreimageInput, SendPaymentArgs, SignRawTransactionRequest,
             SignatureResult, SolanaCoin, SpendPaymentArgs, TakerSwapMakerCoin, TradePreimageFut, TradePreimageResult,
-            TradePreimageValue, TransactionDetails, TransactionFut, TransactionResult, TransactionType,
-            TxMarshalingErr, UnexpectedDerivationMethod, ValidateAddressResult, ValidateFeeArgs,
+            TradePreimageValue, TransactionData, TransactionDetails, TransactionFut, TransactionResult,
+            TransactionType, TxMarshalingErr, UnexpectedDerivationMethod, ValidateAddressResult, ValidateFeeArgs,
             ValidateInstructionsErr, ValidateOtherPubKeyErr, ValidatePaymentError, ValidatePaymentFut,
             ValidatePaymentInput, ValidateWatcherSpendInput, VerificationResult, WaitForHTLCTxSpendArgs,
             WatcherReward, WatcherRewardError, WatcherSearchForSwapTxSpendInput, WatcherValidatePaymentInput,
@@ -149,8 +149,7 @@ async fn withdraw_spl_token_impl(coin: SplToken, req: WithdrawRequest) -> Withdr
         0.into()
     };
     Ok(TransactionDetails {
-        tx_hex: serialized_tx.into(),
-        tx_hash: tx.signatures[0].to_string(),
+        tx: TransactionData::new_signed(serialized_tx.into(), tx.signatures[0].to_string()),
         from: vec![coin.platform_coin.my_address.clone()],
         to: vec![req.to],
         total_amount: res.to_send.clone(),
@@ -300,7 +299,9 @@ impl MarketCoinOps for SplToken {
 
 #[async_trait]
 impl SwapOps for SplToken {
-    fn send_taker_fee(&self, _fee_addr: &[u8], dex_fee: DexFee, _uuid: &[u8]) -> TransactionFut { unimplemented!() }
+    fn send_taker_fee(&self, _fee_addr: &[u8], dex_fee: DexFee, _uuid: &[u8], _expire_at: u64) -> TransactionFut {
+        unimplemented!()
+    }
 
     fn send_maker_payment(&self, _maker_payment_args: SendPaymentArgs) -> TransactionFut { unimplemented!() }
 

@@ -1040,7 +1040,7 @@ pub enum WatcherRewardError {
 /// Swap operations (mostly based on the Hash/Time locked transactions implemented by coin wallets).
 #[async_trait]
 pub trait SwapOps {
-    fn send_taker_fee(&self, fee_addr: &[u8], dex_fee: DexFee, uuid: &[u8]) -> TransactionFut;
+    fn send_taker_fee(&self, fee_addr: &[u8], dex_fee: DexFee, uuid: &[u8], expire_at: u64) -> TransactionFut;
 
     fn send_maker_payment(&self, maker_payment_args: SendPaymentArgs<'_>) -> TransactionFut;
 
@@ -1950,6 +1950,10 @@ pub trait GetWithdrawSenderAddress {
     ) -> MmResult<WithdrawSenderAddress<Self::Address, Self::Pubkey>, WithdrawError>;
 }
 
+/// TODO: Avoid using a single request structure on every platform.
+/// Instead, accept a generic type from withdraw implementations.
+/// This way we won't have to update the payload for every platform when
+/// one of them requires specific addition.
 #[derive(Clone, Deserialize)]
 pub struct WithdrawRequest {
     coin: String,
@@ -1961,6 +1965,8 @@ pub struct WithdrawRequest {
     max: bool,
     fee: Option<WithdrawFee>,
     memo: Option<String>,
+    /// Tendermint specific field used for manually providing the IBC channel IDs.
+    ibc_source_channel: Option<String>,
     /// Currently, this flag is used by ETH/ERC20 coins activated with MetaMask **only**.
     #[cfg(target_arch = "wasm32")]
     #[serde(default)]
@@ -2015,6 +2021,7 @@ impl WithdrawRequest {
             max: true,
             fee: None,
             memo: None,
+            ibc_source_channel: None,
             #[cfg(target_arch = "wasm32")]
             broadcast: false,
         }
@@ -2157,15 +2164,14 @@ pub enum TransactionType {
         token_id: Option<BytesJson>,
     },
     NftTransfer,
+    TendermintIBCTransfer,
 }
 
 /// Transaction details
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct TransactionDetails {
-    /// Raw bytes of signed transaction, this should be sent as is to `send_raw_transaction_bytes` RPC to broadcast the transaction
-    pub tx_hex: BytesJson,
-    /// Transaction hash in hexadecimal format
-    tx_hash: String,
+    #[serde(flatten)]
+    pub tx: TransactionData,
     /// Coins are sent from these addresses
     from: Vec<String>,
     /// Coins are sent to these addresses
@@ -2197,6 +2203,40 @@ pub struct TransactionDetails {
     #[serde(default)]
     transaction_type: TransactionType,
     memo: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum TransactionData {
+    Signed {
+        /// Raw bytes of signed transaction, this should be sent as is to `send_raw_transaction_bytes` RPC to broadcast the transaction
+        tx_hex: BytesJson,
+        /// Transaction hash in hexadecimal format
+        tx_hash: String,
+    },
+    /// This can contain entirely different data depending on the platform.
+    /// TODO: Perhaps using generics would be more suitable here?
+    Unsigned(Json),
+}
+
+impl TransactionData {
+    pub fn new_signed(tx_hex: BytesJson, tx_hash: String) -> Self { Self::Signed { tx_hex, tx_hash } }
+
+    pub fn new_unsigned(unsigned_tx_data: Json) -> Self { Self::Unsigned(unsigned_tx_data) }
+
+    pub fn tx_hex(&self) -> Option<&BytesJson> {
+        match self {
+            TransactionData::Signed { tx_hex, .. } => Some(tx_hex),
+            TransactionData::Unsigned(_) => None,
+        }
+    }
+
+    pub fn tx_hash(&self) -> Option<&str> {
+        match self {
+            TransactionData::Signed { tx_hash, .. } => Some(tx_hash),
+            TransactionData::Unsigned(_) => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -2807,6 +2847,13 @@ pub enum WithdrawError {
     },
     #[display(fmt = "Nft Protocol is not supported yet!")]
     NftProtocolNotSupported,
+    #[display(fmt = "'chain_registry_name' was not found in coins configuration for '{}'", _0)]
+    RegistryNameIsMissing(String),
+    #[display(
+        fmt = "IBC channel could not found for '{}' address. Consider providing it manually with 'ibc_source_channel' in the request.",
+        _0
+    )]
+    IBCChannelCouldNotFound(String),
 }
 
 impl HttpStatusCode for WithdrawError {
@@ -2832,6 +2879,8 @@ impl HttpStatusCode for WithdrawError {
             | WithdrawError::ContractTypeDoesntSupportNftWithdrawing(_)
             | WithdrawError::CoinDoesntSupportNftWithdraw { .. }
             | WithdrawError::NotEnoughNftsAmount { .. }
+            | WithdrawError::RegistryNameIsMissing(_)
+            | WithdrawError::IBCChannelCouldNotFound(_)
             | WithdrawError::MyAddressNotNftOwner { .. } => StatusCode::BAD_REQUEST,
             WithdrawError::HwError(_) => StatusCode::GONE,
             #[cfg(target_arch = "wasm32")]
@@ -5381,6 +5430,7 @@ pub mod for_tests {
             max: false,
             fee,
             memo: None,
+            ibc_source_channel: None,
         };
         let init = init_withdraw(ctx.clone(), withdraw_req).await.unwrap();
         let timeout = wait_until_ms(150000);
