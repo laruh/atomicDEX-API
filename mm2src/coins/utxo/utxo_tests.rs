@@ -189,6 +189,7 @@ fn test_generate_transaction() {
         value: 10000000000,
         outpoint: OutPoint::default(),
         height: Default::default(),
+        script: Vec::new().into(),
     }];
 
     let outputs = vec![TransactionOutput {
@@ -207,6 +208,7 @@ fn test_generate_transaction() {
         value: 100000,
         outpoint: OutPoint::default(),
         height: Default::default(),
+        script: Vec::new().into(),
     }];
 
     let outputs = vec![TransactionOutput {
@@ -231,6 +233,7 @@ fn test_generate_transaction() {
         value: 100000,
         outpoint: OutPoint::default(),
         height: Default::default(),
+        script: Vec::new().into(),
     }];
 
     let outputs = vec![TransactionOutput {
@@ -258,6 +261,7 @@ fn test_generate_transaction() {
         value: 100000,
         outpoint: OutPoint::default(),
         height: Default::default(),
+        script: Vec::new().into(),
     }];
 
     let outputs = vec![TransactionOutput {
@@ -579,6 +583,9 @@ fn test_withdraw_impl_set_fixed_fee() {
             },
             value: 1000000000,
             height: Default::default(),
+            script: coin
+                .script_for_address(&block_on(coin.as_ref().derivation_method.unwrap_single_addr()))
+                .unwrap(),
         }];
         MockResult::Return(Box::pin(futures::future::ok((unspents, cache))))
     });
@@ -622,6 +629,9 @@ fn test_withdraw_impl_sat_per_kb_fee() {
             },
             value: 1000000000,
             height: Default::default(),
+            script: coin
+                .script_for_address(&block_on(coin.as_ref().derivation_method.unwrap_single_addr()))
+                .unwrap(),
         }];
         MockResult::Return(Box::pin(futures::future::ok((unspents, cache))))
     });
@@ -668,6 +678,9 @@ fn test_withdraw_impl_sat_per_kb_fee_amount_equal_to_max() {
             },
             value: 1000000000,
             height: Default::default(),
+            script: coin
+                .script_for_address(&block_on(coin.as_ref().derivation_method.unwrap_single_addr()))
+                .unwrap(),
         }];
         MockResult::Return(Box::pin(futures::future::ok((unspents, cache))))
     });
@@ -716,6 +729,9 @@ fn test_withdraw_impl_sat_per_kb_fee_amount_equal_to_max_dust_included_to_fee() 
             },
             value: 1000000000,
             height: Default::default(),
+            script: coin
+                .script_for_address(&block_on(coin.as_ref().derivation_method.unwrap_single_addr()))
+                .unwrap(),
         }];
         MockResult::Return(Box::pin(futures::future::ok((unspents, cache))))
     });
@@ -764,6 +780,9 @@ fn test_withdraw_impl_sat_per_kb_fee_amount_over_max() {
             },
             value: 1000000000,
             height: Default::default(),
+            script: coin
+                .script_for_address(&block_on(coin.as_ref().derivation_method.unwrap_single_addr()))
+                .unwrap(),
         }];
         MockResult::Return(Box::pin(futures::future::ok((unspents, cache))))
     });
@@ -799,6 +818,9 @@ fn test_withdraw_impl_sat_per_kb_fee_max() {
             },
             value: 1000000000,
             height: Default::default(),
+            script: coin
+                .script_for_address(&block_on(coin.as_ref().derivation_method.unwrap_single_addr()))
+                .unwrap(),
         }];
         MockResult::Return(Box::pin(futures::future::ok((unspents, cache))))
     });
@@ -843,7 +865,7 @@ fn test_withdraw_kmd_rewards_impl(
 ) {
     let verbose: RpcTransaction = json::from_str(verbose_serialized).unwrap();
     let unspent_height = verbose.height;
-    UtxoStandardCoin::get_unspent_ordered_list.mock_safe(move |coin, _| {
+    UtxoStandardCoin::get_unspent_ordered_list.mock_safe(move |coin: &UtxoStandardCoin, _| {
         let tx: UtxoTx = tx_hex.into();
         let unspents = vec![UnspentInfo {
             outpoint: OutPoint {
@@ -852,6 +874,9 @@ fn test_withdraw_kmd_rewards_impl(
             },
             value: tx.outputs[0].value,
             height: unspent_height,
+            script: coin
+                .script_for_address(&block_on(coin.as_ref().derivation_method.unwrap_single_addr()))
+                .unwrap(),
         }];
         let cache = block_on(coin.as_ref().recently_spent_outpoints.lock());
         MockResult::Return(Box::pin(futures::future::ok((unspents, cache))))
@@ -925,6 +950,10 @@ fn test_withdraw_kmd_rewards_zero() {
 #[test]
 #[cfg(not(target_arch = "wasm32"))]
 fn test_withdraw_rick_rewards_none() {
+    let client = NativeClient(Arc::new(NativeClientImpl::default()));
+
+    let coin = utxo_coin_for_test(UtxoRpcClientEnum::Native(client), None, false);
+
     // https://rick.explorer.dexstats.info/tx/7181400be323acc6b5f3164240e6c4601ff4c252f40ce7649f87e81634330209
     const TX_HEX: &str = "0400008085202f8901df8119c507aa61d32332cd246dbfeb3818a4f96e76492454c1fbba5aa097977e000000004847304402205a7e229ea6929c97fd6dde254c19e4eb890a90353249721701ae7a1c477d99c402206a8b7c5bf42b5095585731d6b4c589ce557f63c20aed69ff242eca22ecfcdc7a01feffffff02d04d1bffbc050000232102afdbba3e3c90db5f0f4064118f79cf308f926c68afd64ea7afc930975663e4c4ac402dd913000000001976a9143e17014eca06281ee600adffa34b4afb0922a22288ac2bdab86035a00e000000000000000000000000";
 
@@ -937,14 +966,13 @@ fn test_withdraw_rick_rewards_none() {
             },
             value: tx.outputs[0].value,
             height: Some(1431628),
+            script: coin
+                .script_for_address(&block_on(coin.as_ref().derivation_method.unwrap_single_addr()))
+                .unwrap(),
         }];
         let cache = block_on(coin.as_ref().recently_spent_outpoints.lock());
         MockResult::Return(Box::pin(futures::future::ok((unspents, cache))))
     });
-
-    let client = NativeClient(Arc::new(NativeClientImpl::default()));
-
-    let coin = utxo_coin_for_test(UtxoRpcClientEnum::Native(client), None, false);
 
     let withdraw_req = WithdrawRequest {
         amount: BigDecimal::from_str("0.00001").unwrap(),
@@ -1151,6 +1179,7 @@ fn test_generate_transaction_relay_fee_is_used_when_dynamic_fee_is_lower() {
         value: 1000000000,
         outpoint: OutPoint::default(),
         height: Default::default(),
+        script: Vec::new().into(),
     }];
 
     let outputs = vec![TransactionOutput {
@@ -1193,6 +1222,7 @@ fn test_generate_transaction_relay_fee_is_used_when_dynamic_fee_is_lower_and_ded
         value: 1000000000,
         outpoint: OutPoint::default(),
         height: Default::default(),
+        script: Vec::new().into(),
     }];
 
     let outputs = vec![TransactionOutput {
@@ -1239,6 +1269,7 @@ fn test_generate_tx_fee_is_correct_when_dynamic_fee_is_larger_than_relay() {
             value: 1000000000,
             outpoint: OutPoint::default(),
             height: Default::default(),
+            script: Vec::new().into(),
         };
         20
     ];
@@ -1770,6 +1801,7 @@ fn test_qtum_my_balance() {
                 },
                 value: 5000000000,
                 height: Default::default(),
+                script: Vec::new().into(),
             },
             UnspentInfo {
                 outpoint: OutPoint {
@@ -1778,6 +1810,7 @@ fn test_qtum_my_balance() {
                 },
                 value: 1600000000,
                 height: Default::default(),
+                script: Vec::new().into(),
             },
         ];
         // unspendable (2.0)
@@ -1788,6 +1821,7 @@ fn test_qtum_my_balance() {
             },
             value: 200000000,
             height: Default::default(),
+            script: Vec::new().into(),
         }];
         MockResult::Return(Box::pin(futures::future::ok((
             MatureUnspentList { mature, immature },
@@ -1878,6 +1912,7 @@ fn test_get_mature_unspent_ordered_map_from_cache_impl(
             },
             value: 1000000000,
             height: unspent_height,
+            script: Vec::new().into(),
         }];
         MockResult::Return(Box::new(futures01::future::ok(unspents)))
     });
@@ -2042,8 +2077,8 @@ fn test_native_client_unspents_filtered_using_tx_cache_single_tx_in_cache() {
     let coin = utxo_coin_for_test(UtxoRpcClientEnum::Native(client), None, false);
 
     let address: Address = Address::from_legacyaddress("RGfFZaaNV68uVe1uMf6Y37Y8E1i2SyYZBN", &KMD_PREFIXES).unwrap();
-    block_on(coin.as_ref().recently_spent_outpoints.lock()).for_script_pubkey =
-        Builder::build_p2pkh(address.hash()).to_bytes();
+    let output_script = coin.script_for_address(&address).unwrap();
+    block_on(coin.as_ref().recently_spent_outpoints.lock()).for_script_pubkey = output_script.clone().into();
 
     // https://morty.explorer.dexstats.info/tx/31c7aaae89ab1c39febae164a3190a86ed7c6c6f8c9dc98ec28d508b7929d347
     let tx: UtxoTx = "0400008085202f89027f57730fcbbc2c72fb18bcc3766a713044831a117bb1cade3ed88644864f7333020000006a47304402206e3737b2fcf078b61b16fa67340cc3e79c5d5e2dc9ffda09608371552a3887450220460a332aa1b8ad8f2de92d319666f70751078b221199951f80265b4f7cef8543012102d8c948c6af848c588517288168faa397d6ba3ea924596d03d1d84f224b5123c2ffffffff42b916a80430b80a77e114445b08cf120735447a524de10742fac8f6a9d4170f000000006a473044022004aa053edafb9d161ea8146e0c21ed1593aa6b9404dd44294bcdf920a1695fd902202365eac15dbcc5e9f83e2eed56a8f2f0e5aded36206f9c3fabc668fd4665fa2d012102d8c948c6af848c588517288168faa397d6ba3ea924596d03d1d84f224b5123c2ffffffff03547b16000000000017a9143e8ad0e2bf573d32cb0b3d3a304d9ebcd0c2023b870000000000000000166a144e2b3c0323ab3c2dc6f86dc5ec0729f11e42f56103970400000000001976a91450f4f098306f988d8843004689fae28c83ef16e888ac89c5925f000000000000000000000000000000".into();
@@ -2052,11 +2087,13 @@ fn test_native_client_unspents_filtered_using_tx_cache_single_tx_in_cache() {
             outpoint: tx.inputs[0].previous_output,
             value: 886737,
             height: Some(642293),
+            script: output_script.clone(),
         },
         UnspentInfo {
             outpoint: tx.inputs[1].previous_output,
             value: 88843,
             height: Some(642293),
+            script: output_script,
         },
     ];
 
@@ -2077,6 +2114,8 @@ fn test_native_client_unspents_filtered_using_tx_cache_single_tx_in_cache() {
         },
         value: tx.outputs[2].value,
         height: None,
+        // Should be the same as: Some(output_script.clone()),
+        script: tx.outputs[2].script_pubkey.clone().into(),
     };
     assert_eq!(vec![expected_unspent], unspents_ordered);
 }
@@ -2085,11 +2124,11 @@ fn test_native_client_unspents_filtered_using_tx_cache_single_tx_in_cache() {
 #[cfg(not(target_arch = "wasm32"))]
 fn test_native_client_unspents_filtered_using_tx_cache_single_several_chained_txs_in_cache() {
     let client = native_client_for_test();
-    let coin = utxo_coin_fields_for_test(UtxoRpcClientEnum::Native(client), None, false);
+    let coin = utxo_coin_for_test(UtxoRpcClientEnum::Native(client), None, false);
 
     let address: Address = Address::from_legacyaddress("RGfFZaaNV68uVe1uMf6Y37Y8E1i2SyYZBN", &KMD_PREFIXES).unwrap();
-    block_on(coin.recently_spent_outpoints.lock()).for_script_pubkey = Builder::build_p2pkh(address.hash()).to_bytes();
-    let coin = utxo_coin_from_fields(coin);
+    let output_script = coin.script_for_address(&address).unwrap();
+    block_on(coin.as_ref().recently_spent_outpoints.lock()).for_script_pubkey = output_script.clone().into();
 
     // https://morty.explorer.dexstats.info/tx/31c7aaae89ab1c39febae164a3190a86ed7c6c6f8c9dc98ec28d508b7929d347
     let tx_0: UtxoTx = "0400008085202f89027f57730fcbbc2c72fb18bcc3766a713044831a117bb1cade3ed88644864f7333020000006a47304402206e3737b2fcf078b61b16fa67340cc3e79c5d5e2dc9ffda09608371552a3887450220460a332aa1b8ad8f2de92d319666f70751078b221199951f80265b4f7cef8543012102d8c948c6af848c588517288168faa397d6ba3ea924596d03d1d84f224b5123c2ffffffff42b916a80430b80a77e114445b08cf120735447a524de10742fac8f6a9d4170f000000006a473044022004aa053edafb9d161ea8146e0c21ed1593aa6b9404dd44294bcdf920a1695fd902202365eac15dbcc5e9f83e2eed56a8f2f0e5aded36206f9c3fabc668fd4665fa2d012102d8c948c6af848c588517288168faa397d6ba3ea924596d03d1d84f224b5123c2ffffffff03547b16000000000017a9143e8ad0e2bf573d32cb0b3d3a304d9ebcd0c2023b870000000000000000166a144e2b3c0323ab3c2dc6f86dc5ec0729f11e42f56103970400000000001976a91450f4f098306f988d8843004689fae28c83ef16e888ac89c5925f000000000000000000000000000000".into();
@@ -2098,11 +2137,13 @@ fn test_native_client_unspents_filtered_using_tx_cache_single_several_chained_tx
             outpoint: tx_0.inputs[0].previous_output,
             value: 886737,
             height: Some(642293),
+            script: output_script.clone(),
         },
         UnspentInfo {
             outpoint: tx_0.inputs[1].previous_output,
             value: 88843,
             height: Some(642293),
+            script: output_script.clone(),
         },
     ];
     block_on(coin.as_ref().recently_spent_outpoints.lock()).add_spent(spent_by_tx_0.clone(), tx_0.hash(), tx_0.outputs);
@@ -2114,16 +2155,19 @@ fn test_native_client_unspents_filtered_using_tx_cache_single_several_chained_tx
             outpoint: tx_1.inputs[0].previous_output,
             value: 300803,
             height: Some(642293),
+            script: output_script.clone(),
         },
         UnspentInfo {
             outpoint: tx_1.inputs[1].previous_output,
             value: 888544,
             height: Some(642293),
+            script: output_script.clone(),
         },
         UnspentInfo {
             outpoint: tx_1.inputs[2].previous_output,
             value: 888642,
             height: Some(642293),
+            script: output_script.clone(),
         },
     ];
     block_on(coin.as_ref().recently_spent_outpoints.lock()).add_spent(spent_by_tx_1.clone(), tx_1.hash(), tx_1.outputs);
@@ -2134,11 +2178,13 @@ fn test_native_client_unspents_filtered_using_tx_cache_single_several_chained_tx
             outpoint: tx_2.inputs[0].previous_output,
             value: 832532,
             height: Some(642293),
+            script: output_script.clone(),
         },
         UnspentInfo {
             outpoint: tx_2.inputs[1].previous_output,
             value: 888823,
             height: Some(642293),
+            script: output_script,
         },
     ];
     block_on(coin.as_ref().recently_spent_outpoints.lock()).add_spent(
@@ -2164,6 +2210,58 @@ fn test_native_client_unspents_filtered_using_tx_cache_single_several_chained_tx
         },
         value: tx_2.outputs[2].value,
         height: None,
+        // Should be the same as: Some(output_script.clone()),
+        script: tx_2.outputs[2].script_pubkey.clone().into(),
+    };
+    assert_eq!(vec![expected_unspent], unspents_ordered);
+}
+
+#[test]
+#[cfg(not(target_arch = "wasm32"))]
+fn test_native_client_unspents_p2pk_filtered_using_tx_cache_single_tx_in_cache() {
+    let client = native_client_for_test();
+    let coin = utxo_coin_for_test(UtxoRpcClientEnum::Native(client), None, false);
+
+    let address: Address = Address::from_legacyaddress("RWdLNGQ428ZmhbMs6sVi42KPUbiKYKhiLr", &KMD_PREFIXES).unwrap();
+    let output_script = coin.script_for_address(&address).unwrap();
+    block_on(coin.as_ref().recently_spent_outpoints.lock()).for_script_pubkey = output_script.into();
+
+    // https://morty.explorer.dexstats.info/tx/e5b6a8c98bc802cf764430d79f2a8fdb1373ecf8bb0fb07e9ffea559083e9ead
+    let tx: UtxoTx = "0400008085202f8902c828be61a42ca160a5cbf549b74cb3ac0a8011eb32924b61dd22cb8153dd0c9c000000004948304502210094e99bb9369d2b3c4f13b8ffd7c4abacbdb2b5ee06d9453b13c23d9a924e1b34022005e5939999537f8eb901b6a37fb0776d5f6196fc7a38b1ecc8b043e84ea420bb01ffffffff2ec39160776dc986b7619e07f077d719a3247e1c0ab2148213013a34d79fd56a000000006b483045022100909ec2d09276891d48765f101d6501ef0606af971309f86a814042421f420bc202200bc376f0186aeec215c4ad99d04d8e44354b6838044b26a6a195b36b86de2ed6012102b2e5b95daf6600d4b210ce5e0a9dae507df9c7b89618c4aea05045e5acc1e7eeffffffff01eceadcd4060000001976a914ea29e13cd4446800297a5883a48caddd6d12377688ac00000000becd09000000000000000000000000".into();
+    let spent_by_tx = vec![
+        UnspentInfo {
+            outpoint: tx.inputs[0].previous_output,
+            value: 100139000,
+            height: Some(642293),
+            script: "2103c9f7c3b8ff78beb991cf806a5c91561cfe68f530c9df2b1402e57621ecbcd6b0ac".into(),
+        },
+        UnspentInfo {
+            outpoint: tx.inputs[1].previous_output,
+            value: 29240917628,
+            height: Some(642293),
+            script: "76a914ea29e13cd4446800297a5883a48caddd6d12377688ac".into(),
+        },
+    ];
+
+    block_on(coin.as_ref().recently_spent_outpoints.lock()).add_spent(
+        spent_by_tx.clone(),
+        tx.hash(),
+        tx.outputs.clone(),
+    );
+    NativeClient::list_unspent
+        .mock_safe(move |_, _, _| MockResult::Return(Box::new(futures01::future::ok(spent_by_tx.clone()))));
+
+    let (unspents_ordered, _) = block_on(coin.get_unspent_ordered_list(&address)).unwrap();
+    // output 0 is spent to self so it must be returned
+    let expected_unspent = UnspentInfo {
+        outpoint: OutPoint {
+            hash: tx.hash(),
+            index: 0,
+        },
+        value: tx.outputs[0].value,
+        height: None,
+        // Should be the same as: Some(output_script.clone()),
+        script: tx.outputs[0].script_pubkey.clone().into(),
     };
     assert_eq!(vec![expected_unspent], unspents_ordered);
 }
@@ -2737,6 +2835,7 @@ fn test_generate_tx_doge_fee() {
         outpoint: Default::default(),
         value: 1000000000000,
         height: None,
+        script: Vec::new().into(),
     }];
     let outputs = vec![TransactionOutput {
         value: 100000000,
@@ -2753,6 +2852,7 @@ fn test_generate_tx_doge_fee() {
         outpoint: Default::default(),
         value: 1000000000000,
         height: None,
+        script: Vec::new().into(),
     }];
     let outputs = vec![
         TransactionOutput {
@@ -2773,6 +2873,7 @@ fn test_generate_tx_doge_fee() {
         outpoint: Default::default(),
         value: 1000000000000,
         height: None,
+        script: Vec::new().into(),
     }];
     let outputs = vec![
         TransactionOutput {
@@ -3073,7 +3174,34 @@ fn tbch_electroncash_verbose_tx_unconfirmed() {
 
 #[test]
 #[cfg(not(target_arch = "wasm32"))]
+fn test_withdraw_to_p2pk_fails() {
+    let client = NativeClient(Arc::new(NativeClientImpl::default()));
+
+    let coin = utxo_coin_for_test(UtxoRpcClientEnum::Native(client), None, false);
+
+    let withdraw_req = WithdrawRequest {
+        amount: 1.into(),
+        from: None,
+        to: "03f8f8fa2062590ba9a0a7a86f937de22f540c015864aad35a2a9f6766de906265".to_string(),
+        coin: TEST_COIN_NAME.into(),
+        max: false,
+        fee: None,
+        memo: None,
+    };
+
+    assert!(matches!(
+        coin.withdraw(withdraw_req).wait().unwrap_err().into_inner(),
+        WithdrawError::InvalidAddress(..)
+    ))
+}
+
+#[test]
+#[cfg(not(target_arch = "wasm32"))]
 fn test_withdraw_to_p2pkh() {
+    let client = NativeClient(Arc::new(NativeClientImpl::default()));
+
+    let coin = utxo_coin_for_test(UtxoRpcClientEnum::Native(client), None, false);
+
     UtxoStandardCoin::get_unspent_ordered_list.mock_safe(|coin, _| {
         let cache = block_on(coin.as_ref().recently_spent_outpoints.lock());
         let unspents = vec![UnspentInfo {
@@ -3083,25 +3211,25 @@ fn test_withdraw_to_p2pkh() {
             },
             value: 1000000000,
             height: Default::default(),
+            script: coin
+                .script_for_address(&block_on(coin.as_ref().derivation_method.unwrap_single_addr()))
+                .unwrap(),
         }];
         MockResult::Return(Box::pin(futures::future::ok((unspents, cache))))
     });
 
-    let client = NativeClient(Arc::new(NativeClientImpl::default()));
-
-    let coin = utxo_coin_for_test(UtxoRpcClientEnum::Native(client), None, false);
-
     // Create a p2pkh address for the test coin
     let p2pkh_address = AddressBuilder::new(
         UtxoAddressFormat::Standard,
-        block_on(coin.as_ref().derivation_method.unwrap_single_addr())
-            .hash()
-            .clone(),
         *block_on(coin.as_ref().derivation_method.unwrap_single_addr()).checksum_type(),
         coin.as_ref().conf.address_prefixes.clone(),
         coin.as_ref().conf.bech32_hrp.clone(),
     )
-    .as_pkh()
+    .as_pkh(
+        block_on(coin.as_ref().derivation_method.unwrap_single_addr())
+            .hash()
+            .clone(),
+    )
     .build()
     .expect("valid address props");
 
@@ -3127,6 +3255,10 @@ fn test_withdraw_to_p2pkh() {
 #[test]
 #[cfg(not(target_arch = "wasm32"))]
 fn test_withdraw_to_p2sh() {
+    let client = NativeClient(Arc::new(NativeClientImpl::default()));
+
+    let coin = utxo_coin_for_test(UtxoRpcClientEnum::Native(client), None, false);
+
     UtxoStandardCoin::get_unspent_ordered_list.mock_safe(|coin, _| {
         let cache = block_on(coin.as_ref().recently_spent_outpoints.lock());
         let unspents = vec![UnspentInfo {
@@ -3136,25 +3268,25 @@ fn test_withdraw_to_p2sh() {
             },
             value: 1000000000,
             height: Default::default(),
+            script: coin
+                .script_for_address(&block_on(coin.as_ref().derivation_method.unwrap_single_addr()))
+                .unwrap(),
         }];
         MockResult::Return(Box::pin(futures::future::ok((unspents, cache))))
     });
 
-    let client = NativeClient(Arc::new(NativeClientImpl::default()));
-
-    let coin = utxo_coin_for_test(UtxoRpcClientEnum::Native(client), None, false);
-
     // Create a p2sh address for the test coin
     let p2sh_address = AddressBuilder::new(
         UtxoAddressFormat::Standard,
-        block_on(coin.as_ref().derivation_method.unwrap_single_addr())
-            .hash()
-            .clone(),
         *block_on(coin.as_ref().derivation_method.unwrap_single_addr()).checksum_type(),
         coin.as_ref().conf.address_prefixes.clone(),
         coin.as_ref().conf.bech32_hrp.clone(),
     )
-    .as_sh()
+    .as_sh(
+        block_on(coin.as_ref().derivation_method.unwrap_single_addr())
+            .hash()
+            .clone(),
+    )
     .build()
     .expect("valid address props");
 
@@ -3180,6 +3312,10 @@ fn test_withdraw_to_p2sh() {
 #[test]
 #[cfg(not(target_arch = "wasm32"))]
 fn test_withdraw_to_p2wpkh() {
+    let client = NativeClient(Arc::new(NativeClientImpl::default()));
+
+    let coin = utxo_coin_for_test(UtxoRpcClientEnum::Native(client), None, true);
+
     UtxoStandardCoin::get_unspent_ordered_list.mock_safe(|coin, _| {
         let cache = block_on(coin.as_ref().recently_spent_outpoints.lock());
         let unspents = vec![UnspentInfo {
@@ -3189,25 +3325,25 @@ fn test_withdraw_to_p2wpkh() {
             },
             value: 1000000000,
             height: Default::default(),
+            script: coin
+                .script_for_address(&block_on(coin.as_ref().derivation_method.unwrap_single_addr()))
+                .unwrap(),
         }];
         MockResult::Return(Box::pin(futures::future::ok((unspents, cache))))
     });
 
-    let client = NativeClient(Arc::new(NativeClientImpl::default()));
-
-    let coin = utxo_coin_for_test(UtxoRpcClientEnum::Native(client), None, true);
-
     // Create a p2wpkh address for the test coin
     let p2wpkh_address = AddressBuilder::new(
         UtxoAddressFormat::Segwit,
-        block_on(coin.as_ref().derivation_method.unwrap_single_addr())
-            .hash()
-            .clone(),
         *block_on(coin.as_ref().derivation_method.unwrap_single_addr()).checksum_type(),
         NetworkAddressPrefixes::default(),
         coin.as_ref().conf.bech32_hrp.clone(),
     )
-    .as_pkh()
+    .as_pkh(
+        block_on(coin.as_ref().derivation_method.unwrap_single_addr())
+            .hash()
+            .clone(),
+    )
     .build()
     .expect("valid address props");
 
@@ -3228,6 +3364,56 @@ fn test_withdraw_to_p2wpkh() {
     let expected_script = Builder::build_p2wpkh(p2wpkh_address.hash()).expect("valid p2wpkh script");
 
     assert_eq!(output_script, expected_script);
+}
+
+#[test]
+#[cfg(not(target_arch = "wasm32"))]
+fn test_withdraw_p2pk_balance() {
+    let client = NativeClient(Arc::new(NativeClientImpl::default()));
+
+    let coin = utxo_coin_for_test(UtxoRpcClientEnum::Native(client), None, false);
+
+    UtxoStandardCoin::get_unspent_ordered_list.mock_safe(|coin, _| {
+        let cache = block_on(coin.as_ref().recently_spent_outpoints.lock());
+        let unspents = vec![UnspentInfo {
+            outpoint: OutPoint {
+                hash: 1.into(),
+                index: 0,
+            },
+            value: 1000000000,
+            height: Default::default(),
+            // Use a p2pk output script for this UTXO
+            script: output_script_p2pk(
+                &block_on(coin.as_ref().derivation_method.unwrap_single_addr())
+                    .pubkey()
+                    .unwrap(),
+            ),
+        }];
+        MockResult::Return(Box::pin(futures::future::ok((unspents, cache))))
+    });
+
+    // Create a dummy p2pkh address to withdraw the coins to.
+    let my_p2pkh_address = block_on(coin.as_ref().derivation_method.unwrap_single_addr());
+
+    let withdraw_req = WithdrawRequest {
+        amount: 1.into(),
+        from: None,
+        to: my_p2pkh_address.to_string(),
+        coin: TEST_COIN_NAME.into(),
+        max: false,
+        fee: None,
+        memo: None,
+    };
+    let tx_details = coin.withdraw(withdraw_req).wait().unwrap();
+    let transaction: UtxoTx = deserialize(tx_details.tx_hex.as_slice()).unwrap();
+
+    // The change should be in a p2pkh script.
+    let output_script: Script = transaction.outputs[1].script_pubkey.clone().into();
+    let expected_script = Builder::build_p2pkh(my_p2pkh_address.hash());
+    assert_eq!(output_script, expected_script);
+
+    // And it should have this value (p2pk balance - amount sent - fees).
+    assert_eq!(transaction.outputs[1].value, 899999000);
 }
 
 /// `UtxoStandardCoin` has to check UTXO maturity if `check_utxo_maturity` is `true`.
@@ -3396,15 +3582,7 @@ fn test_split_qtum() {
         UtxoAddressFormat::Segwit => SignatureVersion::WitnessV0,
         _ => coin.as_ref().conf.signature_version,
     };
-    let prev_script = output_script(&p2pkh_address).expect("valid previous script must be built");
-    let signed = sign_tx(
-        unsigned,
-        key_pair,
-        prev_script,
-        signature_version,
-        coin.as_ref().conf.fork_id,
-    )
-    .unwrap();
+    let signed = sign_tx(unsigned, key_pair, signature_version, coin.as_ref().conf.fork_id).unwrap();
     log!("Signed tx = {:?}", signed);
     let res = block_on(coin.broadcast_tx(&signed)).unwrap();
     log!("Res = {:?}", res);

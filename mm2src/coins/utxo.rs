@@ -1,5 +1,5 @@
 /******************************************************************************
- * Copyright © 2023 Pampex LTD and TillyHK LTD              *
+ * Copyright © 2023 Pampex LTD and TillyHK LTD                                *
  *                                                                            *
  * See the CONTRIBUTOR-LICENSE-AGREEMENT, COPYING, LICENSE-COPYRIGHT-NOTICE   *
  * and DEVELOPER-CERTIFICATE-OF-ORIGIN files in the LEGAL directory in        *
@@ -309,21 +309,20 @@ pub struct CachedUnspentInfo {
     pub value: u64,
 }
 
-impl From<UnspentInfo> for CachedUnspentInfo {
-    fn from(unspent: UnspentInfo) -> CachedUnspentInfo {
+impl CachedUnspentInfo {
+    fn from_unspent_info(unspent: &UnspentInfo) -> CachedUnspentInfo {
         CachedUnspentInfo {
             outpoint: unspent.outpoint,
             value: unspent.value,
         }
     }
-}
 
-impl From<CachedUnspentInfo> for UnspentInfo {
-    fn from(cached: CachedUnspentInfo) -> UnspentInfo {
+    fn to_unspent_info(&self, script: Script) -> UnspentInfo {
         UnspentInfo {
-            outpoint: cached.outpoint,
-            value: cached.value,
+            outpoint: self.outpoint,
+            value: self.value,
             height: None,
+            script,
         }
     }
 }
@@ -350,22 +349,17 @@ impl RecentlySpentOutPoints {
     }
 
     pub fn add_spent(&mut self, inputs: Vec<UnspentInfo>, spend_tx_hash: H256, outputs: Vec<TransactionOutput>) {
-        let inputs: HashSet<_> = inputs.into_iter().map(From::from).collect();
+        let inputs: HashSet<_> = inputs.iter().map(CachedUnspentInfo::from_unspent_info).collect();
         let to_replace: HashSet<_> = outputs
-            .iter()
+            .into_iter()
             .enumerate()
-            .filter_map(|(index, output)| {
-                if output.script_pubkey == self.for_script_pubkey {
-                    Some(CachedUnspentInfo {
-                        outpoint: OutPoint {
-                            hash: spend_tx_hash,
-                            index: index as u32,
-                        },
-                        value: output.value,
-                    })
-                } else {
-                    None
-                }
+            .filter(|(_, output)| output.script_pubkey == self.for_script_pubkey)
+            .map(|(index, output)| CachedUnspentInfo {
+                outpoint: OutPoint {
+                    hash: spend_tx_hash,
+                    index: index as u32,
+                },
+                value: output.value,
             })
             .collect();
 
@@ -400,13 +394,14 @@ impl RecentlySpentOutPoints {
     pub fn replace_spent_outputs_with_cache(&self, mut outputs: HashSet<UnspentInfo>) -> HashSet<UnspentInfo> {
         let mut replacement_unspents = HashSet::new();
         outputs.retain(|unspent| {
-            let outs = self.input_to_output_map.get(&unspent.clone().into());
+            let outs = self
+                .input_to_output_map
+                .get(&CachedUnspentInfo::from_unspent_info(unspent));
+
             match outs {
                 Some(outs) => {
-                    for out in outs.iter() {
-                        if !replacement_unspents.contains(out) {
-                            replacement_unspents.insert(out.clone());
-                        }
+                    for out in outs {
+                        replacement_unspents.insert(out.clone());
                     }
                     false
                 },
@@ -416,7 +411,11 @@ impl RecentlySpentOutPoints {
         if replacement_unspents.is_empty() {
             return outputs;
         }
-        outputs.extend(replacement_unspents.into_iter().map(From::from));
+        outputs.extend(
+            replacement_unspents
+                .iter()
+                .map(|cached| cached.to_unspent_info(self.for_script_pubkey.clone().into())),
+        );
         self.replace_spent_outputs_with_cache(outputs)
     }
 }
@@ -1795,6 +1794,7 @@ where
             outpoint: input.previous_output,
             value: input.amount,
             height: None,
+            script: input.prev_script.clone(),
         })
         .collect();
 
@@ -1803,12 +1803,9 @@ where
         _ => coin.as_ref().conf.signature_version,
     };
 
-    let prev_script = utxo_common::output_script_checked(coin.as_ref(), &my_address)
-        .map_err(|e| TransactionErr::Plain(ERRL!("{}", e)))?;
     let signed = try_tx_s!(sign_tx(
         unsigned,
         key_pair,
-        prev_script,
         signature_version,
         coin.as_ref().conf.fork_id
     ));
@@ -1829,6 +1826,9 @@ pub fn output_script(address: &Address) -> Result<Script, keys::Error> {
         AddressScriptType::P2WSH => Builder::build_p2wsh(address.hash()),
     }
 }
+
+/// Builds transaction output script for a legacy P2PK address
+pub fn output_script_p2pk(pubkey: &Public) -> Script { Builder::build_p2pk(pubkey) }
 
 pub fn address_by_conf_and_pubkey_str(
     coin: &str,
@@ -1854,16 +1854,15 @@ pub fn address_by_conf_and_pubkey_str(
     let conf_builder = UtxoConfBuilder::new(conf, &params, coin);
     let utxo_conf = try_s!(conf_builder.build());
     let pubkey_bytes = try_s!(hex::decode(pubkey));
-    let hash = dhash160(&pubkey_bytes);
+    let pubkey = try_s!(Public::from_slice(&pubkey_bytes));
 
     let address = AddressBuilder::new(
         addr_format,
-        hash.into(),
         utxo_conf.checksum_type,
         utxo_conf.address_prefixes,
         utxo_conf.bech32_hrp,
     )
-    .as_pkh()
+    .as_pkh_from_pk(pubkey)
     .build()?;
     address.display_address()
 }

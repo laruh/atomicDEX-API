@@ -186,7 +186,7 @@ impl QtumCoin {
                         .map(|padded_staker_address_hex| padded_staker_address_hex.trim_start_matches('0'))
                 }) {
                 let hash = H160::from_str(raw).map_to_mm(|e| StakingInfosError::Internal(e.to_string()))?;
-                let address = self.utxo_address_from_contract_addr(hash);
+                let address = self.utxo_addr_from_contract_addr(hash);
                 Ok(Some(address.to_string()))
             } else {
                 Ok(None)
@@ -290,16 +290,7 @@ impl QtumCoin {
                 DelegationError::from_generate_tx_error(gen_tx_error, self.ticker().to_string(), utxo.decimals)
             })?;
 
-        let prev_script = self
-            .script_for_address(&my_address)
-            .map_err(|e| DelegationError::InternalError(e.to_string()))?;
-        let signed = sign_tx(
-            unsigned,
-            key_pair,
-            prev_script,
-            utxo.conf.signature_version,
-            utxo.conf.fork_id,
-        )?;
+        let signed = sign_tx(unsigned, key_pair, utxo.conf.signature_version, utxo.conf.fork_id)?;
 
         let miner_fee = data.fee_amount + data.unused_change;
         let generated_tx = GenerateQrc20TxResult {

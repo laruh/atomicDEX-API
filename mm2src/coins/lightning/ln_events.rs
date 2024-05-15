@@ -2,7 +2,6 @@ use super::*;
 use crate::lightning::ln_db::{DBChannelDetails, HTLCStatus, LightningDB, PaymentType};
 use crate::lightning::ln_errors::{SaveChannelClosingError, SaveChannelClosingResult};
 use crate::lightning::ln_sql::SqliteLightningDB;
-use crate::utxo::UtxoCommonOps;
 use bitcoin::blockdata::script::Script;
 use bitcoin::blockdata::transaction::Transaction;
 use bitcoin::consensus::encode::serialize_hex;
@@ -209,25 +208,15 @@ async fn sign_funding_transaction(
     };
     unsigned.outputs[0].script_pubkey = output_script_pubkey.to_bytes().into();
 
-    let my_address = coin
-        .as_ref()
-        .derivation_method
-        .single_addr_or_err()
-        .await
-        .map_err(|e| SignFundingTransactionError::Internal(e.to_string()))?;
     let key_pair = coin
         .as_ref()
         .priv_key_policy
         .activated_key_or_err()
         .map_err(|e| SignFundingTransactionError::Internal(e.to_string()))?;
 
-    let prev_script = coin
-        .script_for_address(&my_address)
-        .map_err(|e| SignFundingTransactionError::Internal(e.to_string()))?;
     let signed = sign_tx(
         unsigned,
         key_pair,
-        prev_script,
         SignatureVersion::WitnessV0,
         coin.as_ref().conf.fork_id,
     )

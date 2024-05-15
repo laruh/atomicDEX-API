@@ -17,7 +17,7 @@ use mm2_core::mm_ctx::MmArc;
 use mm2_err_handle::prelude::*;
 use rpc::v1::types::ToTxHash;
 use rpc_task::RpcTaskError;
-use script::{Builder, Script, SignatureVersion, TransactionInputSigner};
+use script::{SignatureVersion, TransactionInputSigner};
 use serialization::{serialize, serialize_with_flags, SERIALIZE_TRANSACTION_WITNESS};
 use std::iter::once;
 use std::sync::Arc;
@@ -110,19 +110,6 @@ where
             UtxoAddressFormat::Segwit => SignatureVersion::WitnessV0,
             UtxoAddressFormat::Standard | UtxoAddressFormat::CashAddress { .. } => {
                 self.coin().as_ref().conf.signature_version
-            },
-        }
-    }
-
-    #[allow(clippy::result_large_err)]
-    fn prev_script(&self) -> Result<Script, MmError<WithdrawError>> {
-        match self.sender_address().addr_format() {
-            UtxoAddressFormat::Segwit => match Builder::build_p2wpkh(self.sender_address().hash()) {
-                Ok(script) => Ok(script),
-                Err(e) => MmError::err(WithdrawError::InternalError(e.to_string())),
-            },
-            UtxoAddressFormat::Standard | UtxoAddressFormat::CashAddress { .. } => {
-                Ok(Builder::build_p2pkh(self.sender_address().hash()))
             },
         }
     }
@@ -322,8 +309,7 @@ where
 
         sign_params
             .with_signature_version(self.signature_version())
-            .with_unsigned_tx(unsigned_tx)
-            .with_prev_script(self.coin.script_for_address(&self.from_address)?);
+            .with_unsigned_tx(unsigned_tx);
         let sign_params = sign_params.build()?;
 
         let crypto_ctx = CryptoCtx::from_ctx(&self.ctx)?;
@@ -432,7 +418,6 @@ where
         Ok(with_key_pair::sign_tx(
             unsigned_tx,
             &self.key_pair,
-            self.prev_script()?,
             self.signature_version(),
             self.coin.as_ref().conf.fork_id,
         )?)
