@@ -24,8 +24,10 @@ async fn init_eth_coin_helper() -> Result<(MmArc, MmCoinEnum), String> {
             "protocol":{
                 "type": "ETH"
             },
+            "chain_id": 1,
             "rpcport": 80,
-            "mm2": 1
+            "mm2": 1,
+            "max_eth_tx_type": 2
         }]
     });
 
@@ -63,4 +65,32 @@ async fn wasm_test_sign_eth_tx() {
     let res = coin.sign_raw_tx(&sign_req).await;
     console::log_1(&format!("res={:?}", res).into());
     assert!(res.is_ok());
+}
+
+#[wasm_bindgen_test]
+async fn wasm_test_sign_eth_tx_with_priority_fee() {
+    // we need to hold ref to _ctx until the end of the test (because of the weak ref to MmCtx in EthCoinImpl)
+    let (_ctx, coin) = init_eth_coin_helper().await.unwrap();
+    let sign_req = json::from_value(json!({
+        "coin": "ETH",
+        "type": "ETH",
+        "tx": {
+            "to": "0x7Bc1bBDD6A0a722fC9bffC49c921B685ECB84b94".to_string(),
+            "value": "1.234",
+            "gas_limit": "21000",
+            "pay_for_gas": {
+                "tx_type": "Eip1559",
+                "max_fee_per_gas": "1234.567",
+                "max_priority_fee_per_gas": "1.2",
+            }
+        }
+    }))
+    .unwrap();
+    let res = coin.sign_raw_tx(&sign_req).await;
+    console::log_1(&format!("res={:?}", res).into());
+    assert!(res.is_ok());
+    let tx: UnverifiedTransactionWrapper = rlp::decode(&res.unwrap().tx_hex).expect("decoding signed tx okay");
+    if !matches!(tx, UnverifiedTransactionWrapper::Eip1559(..)) {
+        panic!("expected eip1559 tx");
+    }
 }

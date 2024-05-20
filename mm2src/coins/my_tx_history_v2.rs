@@ -217,7 +217,7 @@ impl<'a, Addr: Clone + DisplayAddress + Eq + std::hash::Hash, Tx: Transaction> T
         let mut to: Vec<_> = self.to_addresses.iter().map(DisplayAddress::display_address).collect();
         to.sort();
 
-        let tx_hash = self.tx.tx_hash();
+        let tx_hash = self.tx.tx_hash_as_bytes();
         let internal_id = match &self.transaction_type {
             TransactionType::TokenTransfer(token_id) => {
                 let mut bytes_for_hash = tx_hash.0.clone();

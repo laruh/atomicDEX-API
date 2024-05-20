@@ -470,6 +470,27 @@ pub struct SignUtxoTransactionParams {
     // pub branch_id: Option<u32>, zcash or komodo optional consensus branch id, used for signing transactions ahead of current height
 }
 
+#[derive(Clone, Debug, Deserialize)]
+pub struct LegacyGasPrice {
+    /// Gas price in decimal gwei
+    pub gas_price: BigDecimal,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct Eip1559FeePerGas {
+    /// Max fee per gas in decimal gwei
+    pub max_fee_per_gas: BigDecimal,
+    /// Max priority fee per gas in decimal gwei
+    pub max_priority_fee_per_gas: BigDecimal,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(tag = "tx_type")]
+pub enum PayForGasParams {
+    Legacy(LegacyGasPrice),
+    Eip1559(Eip1559FeePerGas),
+}
+
 /// sign_raw_transaction RPC request's params for signing raw eth transactions
 #[derive(Clone, Debug, Deserialize)]
 pub struct SignEthTransactionParams {
@@ -481,6 +502,8 @@ pub struct SignEthTransactionParams {
     data: Option<String>,
     /// Eth gas use limit
     gas_limit: U256,
+    /// Optional gas price or fee per gas params
+    pay_for_gas: Option<PayForGasParams>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -577,7 +600,7 @@ pub trait Transaction: fmt::Debug + 'static {
     /// Raw transaction bytes of the transaction
     fn tx_hex(&self) -> Vec<u8>;
     /// Serializable representation of tx hash for displaying purpose
-    fn tx_hash(&self) -> BytesJson;
+    fn tx_hash_as_bytes(&self) -> BytesJson;
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1915,6 +1938,15 @@ pub trait MarketCoinOps {
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(tag = "type")]
+pub enum EthGasLimitOption {
+    /// Use this value as gas limit
+    Set(u64),
+    /// Make MM2 calculate gas limit
+    Calc,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(tag = "type")]
 pub enum WithdrawFee {
     UtxoFixed {
         amount: BigDecimal,
@@ -1926,6 +1958,12 @@ pub enum WithdrawFee {
         /// in gwei
         gas_price: BigDecimal,
         gas: u64,
+    },
+    EthGasEip1559 {
+        /// in gwei
+        max_priority_fee_per_gas: BigDecimal,
+        max_fee_per_gas: BigDecimal,
+        gas_option: EthGasLimitOption,
     },
     Qrc20Gas {
         /// in satoshi
@@ -2367,6 +2405,45 @@ pub enum TradePreimageValue {
     Exact(BigDecimal),
     UpperBound(BigDecimal),
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum SwapTxFeePolicy {
+    Unsupported,
+    Internal,
+    Low,
+    Medium,
+    High,
+}
+
+impl Default for SwapTxFeePolicy {
+    fn default() -> Self { SwapTxFeePolicy::Unsupported }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SwapTxFeePolicyRequest {
+    coin: String,
+    #[serde(default)]
+    swap_tx_fee_policy: SwapTxFeePolicy,
+}
+
+#[derive(Debug, Display, EnumFromStringify, Serialize, SerializeErrorType)]
+#[serde(tag = "error_type", content = "error_data")]
+pub enum SwapTxFeePolicyError {
+    #[from_stringify("CoinFindError")]
+    NoSuchCoin(String),
+    #[display(fmt = "eip-1559 policy is not supported for coin {}", _0)]
+    NotSupported(String),
+}
+
+impl HttpStatusCode for SwapTxFeePolicyError {
+    fn status_code(&self) -> StatusCode {
+        match self {
+            SwapTxFeePolicyError::NoSuchCoin(_) | SwapTxFeePolicyError::NotSupported(_) => StatusCode::BAD_REQUEST,
+        }
+    }
+}
+
+pub type SwapTxFeePolicyResult = Result<SwapTxFeePolicy, MmError<SwapTxFeePolicyError>>;
 
 #[derive(Debug, Display, EnumFromStringify, PartialEq)]
 pub enum TradePreimageError {
@@ -2847,6 +2924,14 @@ pub enum WithdrawError {
     },
     #[display(fmt = "Nft Protocol is not supported yet!")]
     NftProtocolNotSupported,
+    #[display(fmt = "Chain id must be set for typed transaction for coin {}", coin)]
+    NoChainIdSet {
+        coin: String,
+    },
+    #[display(fmt = "Signing error {}", _0)]
+    SigningError(String),
+    #[display(fmt = "Eth transaction type not supported")]
+    TxTypeNotSupported,
     #[display(fmt = "'chain_registry_name' was not found in coins configuration for '{}'", _0)]
     RegistryNameIsMissing(String),
     #[display(
@@ -2879,6 +2964,9 @@ impl HttpStatusCode for WithdrawError {
             | WithdrawError::ContractTypeDoesntSupportNftWithdrawing(_)
             | WithdrawError::CoinDoesntSupportNftWithdraw { .. }
             | WithdrawError::NotEnoughNftsAmount { .. }
+            | WithdrawError::NoChainIdSet { .. }
+            | WithdrawError::TxTypeNotSupported
+            | WithdrawError::SigningError(_)
             | WithdrawError::RegistryNameIsMissing(_)
             | WithdrawError::IBCChannelCouldNotFound(_)
             | WithdrawError::MyAddressNotNftOwner { .. } => StatusCode::BAD_REQUEST,
@@ -3181,11 +3269,12 @@ pub trait MmCoin:
     /// Get fee to be paid per 1 swap transaction
     fn get_trade_fee(&self) -> Box<dyn Future<Item = TradeFee, Error = String> + Send>;
 
-    /// Get fee to be paid by sender per whole swap using the sending value and check if the wallet has sufficient balance to pay the fee.
+    /// Get fee to be paid by sender per whole swap (including possible refund) using the sending value and check if the wallet has sufficient balance to pay the fee.
     async fn get_sender_trade_fee(
         &self,
         value: TradePreimageValue,
         stage: FeeApproxStage,
+        include_refund_fee: bool,
     ) -> TradePreimageResult<TradeFee>;
 
     /// Get fee to be paid by receiver per whole swap and check if the wallet has sufficient balance to pay the fee.
@@ -4753,6 +4842,12 @@ pub async fn my_tx_history(ctx: MmArc, req: Json) -> Result<Response<Vec<u8>>, S
     Ok(try_s!(Response::builder().body(body)))
 }
 
+/// `get_trade_fee` rpc implementation.
+/// There is some consideration about this rpc:  
+/// for eth coin this rpc returns max possible trade fee (estimated for maximum possible gas limit for any kind of swap).
+/// However for eth coin, as part of fixing this issue https://github.com/KomodoPlatform/komodo-defi-framework/issues/1848,
+/// `max_taker_vol' and `trade_preimage` rpc now return more accurate required gas calculations.
+/// So maybe it would be better to deprecate this `get_trade_fee` rpc
 pub async fn get_trade_fee(ctx: MmArc, req: Json) -> Result<Response<Vec<u8>>, String> {
     let ticker = try_s!(req["coin"].as_str().ok_or("No 'coin' field")).to_owned();
     let coin = match lp_coinfind(&ctx, &ticker).await {
@@ -5261,6 +5356,41 @@ fn coins_conf_check(ctx: &MmArc, coins_en: &Json, ticker: &str, req: Option<&Jso
         );
     }
     Ok(())
+}
+
+#[async_trait]
+pub trait Eip1559Ops {
+    /// Return swap transaction fee policy
+    fn get_swap_transaction_fee_policy(&self) -> SwapTxFeePolicy;
+
+    /// set swap transaction fee policy
+    fn set_swap_transaction_fee_policy(&self, swap_txfee_policy: SwapTxFeePolicy);
+}
+
+/// Get eip 1559 transaction fee per gas policy (low, medium, high) set for the coin
+pub async fn get_swap_transaction_fee_policy(ctx: MmArc, req: SwapTxFeePolicyRequest) -> SwapTxFeePolicyResult {
+    let coin = lp_coinfind_or_err(&ctx, &req.coin).await?;
+    match coin {
+        MmCoinEnum::EthCoin(eth_coin) => Ok(eth_coin.get_swap_transaction_fee_policy()),
+        MmCoinEnum::Qrc20Coin(qrc20_coin) => Ok(qrc20_coin.get_swap_transaction_fee_policy()),
+        _ => MmError::err(SwapTxFeePolicyError::NotSupported(req.coin)),
+    }
+}
+
+/// Set eip 1559 transaction fee per gas policy (low, medium, high)
+pub async fn set_swap_transaction_fee_policy(ctx: MmArc, req: SwapTxFeePolicyRequest) -> SwapTxFeePolicyResult {
+    let coin = lp_coinfind_or_err(&ctx, &req.coin).await?;
+    match coin {
+        MmCoinEnum::EthCoin(eth_coin) => {
+            eth_coin.set_swap_transaction_fee_policy(req.swap_tx_fee_policy);
+            Ok(eth_coin.get_swap_transaction_fee_policy())
+        },
+        MmCoinEnum::Qrc20Coin(qrc20_coin) => {
+            qrc20_coin.set_swap_transaction_fee_policy(req.swap_tx_fee_policy);
+            Ok(qrc20_coin.get_swap_transaction_fee_policy())
+        },
+        _ => MmError::err(SwapTxFeePolicyError::NotSupported(req.coin)),
+    }
 }
 
 /// Checks addresses that either had empty transaction history last time we checked or has not been checked before.

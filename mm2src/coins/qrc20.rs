@@ -17,18 +17,18 @@ use crate::utxo::{qtum, ActualTxFee, AdditionalTxData, AddrFromStrError, Broadca
                   UtxoFromLegacyReqErr, UtxoTx, UtxoTxBroadcastOps, UtxoTxGenerationOps, VerboseTransactionFrom,
                   UTXO_LOCK};
 use crate::{BalanceError, BalanceFut, CheckIfMyPaymentSentArgs, CoinBalance, CoinFutSpawner, ConfirmPaymentInput,
-            DexFee, FeeApproxStage, FoundSwapTxSpend, HistorySyncState, IguanaPrivKey, MakerSwapTakerCoin,
+            DexFee, Eip1559Ops, FeeApproxStage, FoundSwapTxSpend, HistorySyncState, IguanaPrivKey, MakerSwapTakerCoin,
             MarketCoinOps, MmCoin, MmCoinEnum, NegotiateSwapContractAddrErr, PaymentInstructionArgs,
             PaymentInstructions, PaymentInstructionsErr, PrivKeyBuildPolicy, PrivKeyPolicyNotAllowed,
             RawTransactionFut, RawTransactionRequest, RawTransactionResult, RefundError, RefundPaymentArgs,
             RefundResult, SearchForSwapTxSpendInput, SendMakerPaymentSpendPreimageInput, SendPaymentArgs,
-            SignRawTransactionRequest, SignatureResult, SpendPaymentArgs, SwapOps, TakerSwapMakerCoin, TradeFee,
-            TradePreimageError, TradePreimageFut, TradePreimageResult, TradePreimageValue, TransactionData,
-            TransactionDetails, TransactionEnum, TransactionErr, TransactionFut, TransactionResult, TransactionType,
-            TxMarshalingErr, UnexpectedDerivationMethod, ValidateAddressResult, ValidateFeeArgs,
-            ValidateInstructionsErr, ValidateOtherPubKeyErr, ValidatePaymentFut, ValidatePaymentInput,
-            ValidateWatcherSpendInput, VerificationResult, WaitForHTLCTxSpendArgs, WatcherOps, WatcherReward,
-            WatcherRewardError, WatcherSearchForSwapTxSpendInput, WatcherValidatePaymentInput,
+            SignRawTransactionRequest, SignatureResult, SpendPaymentArgs, SwapOps, SwapTxFeePolicy,
+            TakerSwapMakerCoin, TradeFee, TradePreimageError, TradePreimageFut, TradePreimageResult,
+            TradePreimageValue, TransactionData, TransactionDetails, TransactionEnum, TransactionErr, TransactionFut,
+            TransactionResult, TransactionType, TxMarshalingErr, UnexpectedDerivationMethod, ValidateAddressResult,
+            ValidateFeeArgs, ValidateInstructionsErr, ValidateOtherPubKeyErr, ValidatePaymentFut,
+            ValidatePaymentInput, ValidateWatcherSpendInput, VerificationResult, WaitForHTLCTxSpendArgs, WatcherOps,
+            WatcherReward, WatcherRewardError, WatcherSearchForSwapTxSpendInput, WatcherValidatePaymentInput,
             WatcherValidateTakerFeeInput, WithdrawError, WithdrawFee, WithdrawFut, WithdrawRequest, WithdrawResult};
 use async_trait::async_trait;
 use bitcrypto::{dhash160, sha256};
@@ -1361,6 +1361,7 @@ impl MmCoin for Qrc20Coin {
         &self,
         value: TradePreimageValue,
         stage: FeeApproxStage,
+        include_refund_fee: bool,
     ) -> TradePreimageResult<TradeFee> {
         let decimals = self.utxo.decimals;
         // pass the dummy params
@@ -1392,14 +1393,18 @@ impl MmCoin for Qrc20Coin {
                 .await?
         };
 
-        let sender_refund_fee = {
+        // Optionally calculate refund fee.
+        let sender_refund_fee = if include_refund_fee {
             let sender_refund_output =
                 self.sender_refund_output(&self.swap_contract_address, swap_id, value, secret_hash, receiver_addr)?;
             self.preimage_trade_fee_required_to_send_outputs(vec![sender_refund_output], &stage)
                 .await?
+        } else {
+            BigDecimal::from(0) // No refund fee if not included.
         };
 
         let total_fee = erc20_payment_fee + sender_refund_fee;
+
         Ok(TradeFee {
             coin: self.platform.clone(),
             amount: total_fee.into(),
@@ -1673,4 +1678,10 @@ fn transfer_event_from_log(log: &LogEntry) -> Result<TransferEventDetails, Strin
         sender,
         receiver,
     })
+}
+
+impl Eip1559Ops for Qrc20Coin {
+    fn get_swap_transaction_fee_policy(&self) -> SwapTxFeePolicy { SwapTxFeePolicy::Unsupported }
+
+    fn set_swap_transaction_fee_policy(&self, _swap_txfee_policy: SwapTxFeePolicy) {}
 }

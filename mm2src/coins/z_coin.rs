@@ -218,7 +218,7 @@ impl Transaction for ZTransaction {
         hex
     }
 
-    fn tx_hash(&self) -> BytesJson {
+    fn tx_hash_as_bytes(&self) -> BytesJson {
         let mut bytes = self.txid().0.to_vec();
         bytes.reverse();
         bytes.into()
@@ -1723,6 +1723,7 @@ impl MmCoin for ZCoin {
         &self,
         _value: TradePreimageValue,
         _stage: FeeApproxStage,
+        _include_refund_fee: bool,
     ) -> TradePreimageResult<TradeFee> {
         Ok(TradeFee {
             coin: self.ticker().to_owned(),

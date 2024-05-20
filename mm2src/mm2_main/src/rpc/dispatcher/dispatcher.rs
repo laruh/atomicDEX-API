@@ -17,6 +17,8 @@ use coins::rpc_command::tendermint::{ibc_chains, ibc_transfer_channels};
 use coins::rpc_command::{account_balance::account_balance,
                          get_current_mtp::get_current_mtp_rpc,
                          get_enabled_coins::get_enabled_coins,
+                         get_estimated_fees::{get_eth_estimated_fee_per_gas, start_eth_fee_estimator,
+                                              stop_eth_fee_estimator},
                          get_new_address::{cancel_get_new_address, get_new_address, init_get_new_address,
                                            init_get_new_address_status, init_get_new_address_user_action},
                          init_account_balance::{cancel_account_balance, init_account_balance,
@@ -33,8 +35,9 @@ use coins::utxo::qtum::QtumCoin;
 use coins::utxo::slp::SlpToken;
 use coins::utxo::utxo_standard::UtxoStandardCoin;
 use coins::z_coin::ZCoin;
-use coins::{add_delegation, get_my_address, get_raw_transaction, get_staking_infos, nft, remove_delegation,
-            sign_message, sign_raw_transaction, verify_message, withdraw};
+use coins::{add_delegation, get_my_address, get_raw_transaction, get_staking_infos, get_swap_transaction_fee_policy,
+            nft, remove_delegation, set_swap_transaction_fee_policy, sign_message, sign_raw_transaction,
+            verify_message, withdraw};
 #[cfg(all(
     feature = "enable-solana",
     not(target_os = "ios"),
@@ -211,6 +214,11 @@ async fn dispatcher_v2(request: MmRpcRequest, ctx: MmArc) -> DispatcherResult<Re
         "ibc_chains" => handle_mmrpc(ctx, request, ibc_chains).await,
         "ibc_transfer_channels" => handle_mmrpc(ctx, request, ibc_transfer_channels).await,
         "withdraw_nft" => handle_mmrpc(ctx, request, withdraw_nft).await,
+        "start_eth_fee_estimator" => handle_mmrpc(ctx, request, start_eth_fee_estimator).await,
+        "stop_eth_fee_estimator" => handle_mmrpc(ctx, request, stop_eth_fee_estimator).await,
+        "get_eth_estimated_fee_per_gas" => handle_mmrpc(ctx, request, get_eth_estimated_fee_per_gas).await,
+        "get_swap_transaction_fee_policy" => handle_mmrpc(ctx, request, get_swap_transaction_fee_policy).await,
+        "set_swap_transaction_fee_policy" => handle_mmrpc(ctx, request, set_swap_transaction_fee_policy).await,
         "send_asked_data" => handle_mmrpc(ctx, request, send_asked_data_rpc).await,
         "z_coin_tx_history" => handle_mmrpc(ctx, request, coins::my_tx_history_v2::z_coin_tx_history_rpc).await,
         #[cfg(not(target_arch = "wasm32"))]

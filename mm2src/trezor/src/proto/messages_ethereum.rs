@@ -109,6 +109,63 @@ pub struct EthereumSignTx {
 }
 
 ///*
+/// Request: Ask device to sign EIP1559 transaction
+/// Note: the first at most 1024 bytes of data MUST be transmitted as part of this message.
+/// @start
+/// @next EthereumTxRequest
+/// @next Failure
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EthereumSignTxEIP1559 {
+    /// BIP-32 path to derive the key from master node
+    #[prost(uint32, repeated, tag = "1")]
+    pub address_n: ::prost::alloc::vec::Vec<u32>,
+    /// <=256 bit unsigned big endian
+    #[prost(bytes = "vec", required, tag = "2")]
+    pub nonce: ::prost::alloc::vec::Vec<u8>,
+    /// <=256 bit unsigned big endian (in wei)
+    #[prost(bytes = "vec", required, tag = "3")]
+    pub max_gas_fee: ::prost::alloc::vec::Vec<u8>,
+    /// <=256 bit unsigned big endian (in wei)
+    #[prost(bytes = "vec", required, tag = "4")]
+    pub max_priority_fee: ::prost::alloc::vec::Vec<u8>,
+    /// <=256 bit unsigned big endian
+    #[prost(bytes = "vec", required, tag = "5")]
+    pub gas_limit: ::prost::alloc::vec::Vec<u8>,
+    /// recipient address
+    #[prost(string, optional, tag = "6", default = "")]
+    pub to: ::core::option::Option<::prost::alloc::string::String>,
+    /// <=256 bit unsigned big endian (in wei)
+    #[prost(bytes = "vec", required, tag = "7")]
+    pub value: ::prost::alloc::vec::Vec<u8>,
+    /// The initial data chunk (<= 1024 bytes)
+    #[prost(bytes = "vec", optional, tag = "8", default = "b\"\"")]
+    pub data_initial_chunk: ::core::option::Option<::prost::alloc::vec::Vec<u8>>,
+    /// Length of transaction payload
+    #[prost(uint32, required, tag = "9", default = 0)]
+    pub data_length: u32,
+    /// Chain Id for EIP 155
+    #[prost(uint64, required, tag = "10")]
+    pub chain_id: u64,
+    /// Access list
+    #[prost(message, repeated, tag = "11")]
+    pub access_list: ::std::vec::Vec<EthereumAccessList>,
+    /// network and/or token definitions for tx
+    #[prost(message, optional, tag = "12")]
+    pub definitions: ::core::option::Option<super::messages_ethereum_definitions::EthereumDefinitions>,
+    /// display the address in chunks of 4 characters
+    #[prost(bool, optional, tag = "13")]
+    pub chunkify: ::std::option::Option<bool>,
+}
+
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EthereumAccessList {
+    #[prost(string, required, tag = "1")]
+    pub address: ::prost::alloc::string::String,
+    #[prost(bytes = "vec", repeated, tag = "2")]
+    pub storage_keys: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
+}
+
+///*
 /// Response: Device asks for more data from transaction payload, or returns the signature.
 /// If data_length is set, device awaits that many more bytes of payload.
 /// Otherwise, the signature_* fields contain the computed transaction signature. All three fields will be present.

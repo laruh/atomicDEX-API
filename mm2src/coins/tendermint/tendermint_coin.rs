@@ -469,7 +469,7 @@ pub struct CosmosTransaction {
 impl crate::Transaction for CosmosTransaction {
     fn tx_hex(&self) -> Vec<u8> { self.data.encode_to_vec() }
 
-    fn tx_hash(&self) -> BytesJson {
+    fn tx_hash_as_bytes(&self) -> BytesJson {
         let bytes = self.data.encode_to_vec();
         let hash = sha256(&bytes);
         hash.to_vec().into()
@@ -2218,6 +2218,7 @@ impl MmCoin for TendermintCoin {
         &self,
         value: TradePreimageValue,
         _stage: FeeApproxStage,
+        _include_refund_fee: bool,
     ) -> TradePreimageResult<TradeFee> {
         let amount = match value {
             TradePreimageValue::Exact(decimal) | TradePreimageValue::UpperBound(decimal) => decimal,
@@ -3419,7 +3420,7 @@ pub mod tendermint_coin_tests {
 
         // https://nyancat.iobscan.io/#/tx?txHash=565C820C1F95556ADC251F16244AAD4E4274772F41BC13F958C9C2F89A14D137
         let expected_spend_hash = "565C820C1F95556ADC251F16244AAD4E4274772F41BC13F958C9C2F89A14D137";
-        let hash = spend_tx.tx_hash();
+        let hash = spend_tx.tx_hash_as_bytes();
         assert_eq!(hex::encode_upper(hash.0), expected_spend_hash);
     }
 
@@ -3772,7 +3773,7 @@ pub mod tendermint_coin_tests {
 
         // https://nyancat.iobscan.io/#/tx?txHash=565C820C1F95556ADC251F16244AAD4E4274772F41BC13F958C9C2F89A14D137
         let expected_spend_hash = "565C820C1F95556ADC251F16244AAD4E4274772F41BC13F958C9C2F89A14D137";
-        let hash = spend_tx.tx_hash();
+        let hash = spend_tx.tx_hash_as_bytes();
         assert_eq!(hex::encode_upper(hash.0), expected_spend_hash);
     }
 

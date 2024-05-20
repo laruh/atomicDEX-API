@@ -5,10 +5,11 @@ use super::docker_tests_common::{random_secp256k1_secret, ERC1155_TEST_ABI, ERC7
 use bitcrypto::{dhash160, sha256};
 use coins::eth::{checksum_address, eth_addr_to_hex, eth_coin_from_conf_and_request, EthCoin, ERC20_ABI};
 use coins::nft::nft_structs::{Chain, ContractType, NftInfo};
-use coins::{CoinProtocol, CoinWithDerivationMethod, ConfirmPaymentInput, DerivationMethod, FoundSwapTxSpend,
-            MakerNftSwapOpsV2, MarketCoinOps, NftSwapInfo, ParseCoinAssocTypes, PrivKeyBuildPolicy, RefundPaymentArgs,
-            SearchForSwapTxSpendInput, SendNftMakerPaymentArgs, SendPaymentArgs, SpendNftMakerPaymentArgs,
-            SpendPaymentArgs, SwapOps, SwapTxTypeWithSecretHash, ToBytes, Transaction, ValidateNftMakerPaymentArgs};
+use coins::{CoinProtocol, CoinWithDerivationMethod, ConfirmPaymentInput, DerivationMethod, Eip1559Ops,
+            FoundSwapTxSpend, MakerNftSwapOpsV2, MarketCoinOps, NftSwapInfo, ParseCoinAssocTypes, PrivKeyBuildPolicy,
+            RefundPaymentArgs, SearchForSwapTxSpendInput, SendNftMakerPaymentArgs, SendPaymentArgs,
+            SpendNftMakerPaymentArgs, SpendPaymentArgs, SwapOps, SwapTxFeePolicy, SwapTxTypeWithSecretHash, ToBytes,
+            Transaction, ValidateNftMakerPaymentArgs};
 use common::{block_on, now_sec};
 use crypto::Secp256k1Secret;
 use ethereum_types::U256;
@@ -60,6 +61,7 @@ pub fn erc721_contract() -> Address { unsafe { GETH_ERC721_CONTRACT } }
 pub fn erc1155_contract() -> Address { unsafe { GETH_ERC1155_CONTRACT } }
 
 fn wait_for_confirmation(tx_hash: H256) {
+    thread::sleep(Duration::from_millis(2000));
     loop {
         match block_on(GETH_WEB3.eth().transaction_receipt(tx_hash)) {
             Ok(Some(r)) => match r.block_hash {
@@ -392,9 +394,9 @@ pub fn fill_eth_erc20_with_private_key(priv_key: Secp256k1Secret) {
     fill_erc20(my_address, U256::from(10000000000u64));
 }
 
-#[test]
-fn send_and_refund_eth_maker_payment() {
+fn send_and_refund_eth_maker_payment_impl(swap_txfee_policy: SwapTxFeePolicy) {
     let eth_coin = eth_coin_with_random_privkey(swap_contract());
+    eth_coin.set_swap_transaction_fee_policy(swap_txfee_policy);
 
     let time_lock = now_sec() - 100;
     let other_pubkey = &[
@@ -437,7 +439,7 @@ fn send_and_refund_eth_maker_payment() {
         watcher_reward: false,
     };
     let payment_refund = block_on(eth_coin.send_maker_refunds_payment(refund_args)).unwrap();
-    log!("Payment refund tx hash {:02x}", payment_refund.tx_hash());
+    log!("Payment refund tx hash {:02x}", payment_refund.tx_hash_as_bytes());
 
     let confirm_input = ConfirmPaymentInput {
         payment_tx: payment_refund.tx_hex(),
@@ -467,9 +469,19 @@ fn send_and_refund_eth_maker_payment() {
 }
 
 #[test]
-fn send_and_spend_eth_maker_payment() {
+fn send_and_refund_eth_maker_payment_internal_gas_policy() {
+    send_and_refund_eth_maker_payment_impl(SwapTxFeePolicy::Internal);
+}
+
+#[test]
+fn send_and_refund_eth_maker_payment_priority_fee() { send_and_refund_eth_maker_payment_impl(SwapTxFeePolicy::Medium); }
+
+fn send_and_spend_eth_maker_payment_impl(swap_txfee_policy: SwapTxFeePolicy) {
     let maker_eth_coin = eth_coin_with_random_privkey(swap_contract());
     let taker_eth_coin = eth_coin_with_random_privkey(swap_contract());
+
+    maker_eth_coin.set_swap_transaction_fee_policy(swap_txfee_policy.clone());
+    taker_eth_coin.set_swap_transaction_fee_policy(swap_txfee_policy);
 
     let time_lock = now_sec() + 1000;
     let maker_pubkey = maker_eth_coin.derive_htlc_pubkey(&[]);
@@ -512,7 +524,7 @@ fn send_and_spend_eth_maker_payment() {
         watcher_reward: false,
     };
     let payment_spend = block_on(taker_eth_coin.send_taker_spends_maker_payment(spend_args)).unwrap();
-    log!("Payment spend tx hash {:02x}", payment_spend.tx_hash());
+    log!("Payment spend tx hash {:02x}", payment_spend.tx_hash_as_bytes());
 
     let confirm_input = ConfirmPaymentInput {
         payment_tx: payment_spend.tx_hex(),
@@ -542,8 +554,16 @@ fn send_and_spend_eth_maker_payment() {
 }
 
 #[test]
-fn send_and_refund_erc20_maker_payment() {
+fn send_and_spend_eth_maker_payment_internal_gas_policy() {
+    send_and_spend_eth_maker_payment_impl(SwapTxFeePolicy::Internal);
+}
+
+#[test]
+fn send_and_spend_eth_maker_payment_priority_fee() { send_and_spend_eth_maker_payment_impl(SwapTxFeePolicy::Medium); }
+
+fn send_and_refund_erc20_maker_payment_impl(swap_txfee_policy: SwapTxFeePolicy) {
     let erc20_coin = erc20_coin_with_random_privkey(swap_contract());
+    erc20_coin.set_swap_transaction_fee_policy(swap_txfee_policy);
 
     let time_lock = now_sec() - 100;
     let other_pubkey = &[
@@ -587,7 +607,7 @@ fn send_and_refund_erc20_maker_payment() {
         watcher_reward: false,
     };
     let payment_refund = block_on(erc20_coin.send_maker_refunds_payment(refund_args)).unwrap();
-    log!("Payment refund tx hash {:02x}", payment_refund.tx_hash());
+    log!("Payment refund tx hash {:02x}", payment_refund.tx_hash_as_bytes());
 
     let confirm_input = ConfirmPaymentInput {
         payment_tx: payment_refund.tx_hex(),
@@ -617,9 +637,21 @@ fn send_and_refund_erc20_maker_payment() {
 }
 
 #[test]
-fn send_and_spend_erc20_maker_payment() {
+fn send_and_refund_erc20_maker_payment_internal_gas_policy() {
+    send_and_refund_erc20_maker_payment_impl(SwapTxFeePolicy::Internal);
+}
+
+#[test]
+fn send_and_refund_erc20_maker_payment_priority_fee() {
+    send_and_refund_erc20_maker_payment_impl(SwapTxFeePolicy::Medium);
+}
+
+fn send_and_spend_erc20_maker_payment_impl(swap_txfee_policy: SwapTxFeePolicy) {
     let maker_erc20_coin = erc20_coin_with_random_privkey(swap_contract());
     let taker_erc20_coin = erc20_coin_with_random_privkey(swap_contract());
+
+    maker_erc20_coin.set_swap_transaction_fee_policy(swap_txfee_policy.clone());
+    taker_erc20_coin.set_swap_transaction_fee_policy(swap_txfee_policy);
 
     let time_lock = now_sec() + 1000;
     let maker_pubkey = maker_erc20_coin.derive_htlc_pubkey(&[]);
@@ -662,7 +694,7 @@ fn send_and_spend_erc20_maker_payment() {
         watcher_reward: false,
     };
     let payment_spend = block_on(taker_erc20_coin.send_taker_spends_maker_payment(spend_args)).unwrap();
-    log!("Payment spend tx hash {:02x}", payment_spend.tx_hash());
+    log!("Payment spend tx hash {:02x}", payment_spend.tx_hash_as_bytes());
 
     let confirm_input = ConfirmPaymentInput {
         payment_tx: payment_spend.tx_hex(),
@@ -689,6 +721,16 @@ fn send_and_spend_erc20_maker_payment() {
 
     let expected = FoundSwapTxSpend::Spent(payment_spend);
     assert_eq!(expected, search_tx);
+}
+
+#[test]
+fn send_and_spend_erc20_maker_payment_internal_gas_policy() {
+    send_and_spend_erc20_maker_payment_impl(SwapTxFeePolicy::Internal);
+}
+
+#[test]
+fn send_and_spend_erc20_maker_payment_priority_fee() {
+    send_and_spend_erc20_maker_payment_impl(SwapTxFeePolicy::Medium);
 }
 
 #[test]
@@ -727,7 +769,10 @@ fn send_and_spend_erc721_maker_payment() {
         nft_swap_info: &nft_swap_info,
     };
     let maker_payment = block_on(maker_global_nft.send_nft_maker_payment_v2(send_payment_args)).unwrap();
-    log!("Maker sent ERC721 NFT Payment tx hash {:02x}", maker_payment.tx_hash());
+    log!(
+        "Maker sent ERC721 NFT Payment tx hash {:02x}",
+        maker_payment.tx_hash_as_bytes()
+    );
 
     let confirm_input = ConfirmPaymentInput {
         payment_tx: maker_payment.tx_hex(),
@@ -809,7 +854,10 @@ fn send_and_spend_erc1155_maker_payment() {
         nft_swap_info: &nft_swap_info,
     };
     let maker_payment = block_on(maker_global_nft.send_nft_maker_payment_v2(send_payment_args)).unwrap();
-    log!("Maker sent ERC1155 NFT Payment tx hash {:02x}", maker_payment.tx_hash());
+    log!(
+        "Maker sent ERC1155 NFT Payment tx hash {:02x}",
+        maker_payment.tx_hash_as_bytes()
+    );
 
     let confirm_input = ConfirmPaymentInput {
         payment_tx: maker_payment.tx_hex(),

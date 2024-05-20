@@ -1,6 +1,6 @@
 use crate::coin_errors::{ValidatePaymentError, ValidatePaymentResult};
 use ethabi::{Contract, Token};
-use ethcore_transaction::{Action, UnverifiedTransaction};
+use ethcore_transaction::{Action, UnverifiedTransactionWrapper};
 use ethereum_types::{Address, U256};
 use futures::compat::Future01CompatExt;
 use mm2_err_handle::prelude::{MapToMmResult, MmError, MmResult};
@@ -14,8 +14,8 @@ mod structs;
 use structs::{ExpectedHtlcParams, PaymentType, ValidationParams};
 
 use super::ContractType;
-use crate::eth::{addr_from_raw_pubkey, decode_contract_call, EthCoin, EthCoinType, MakerPaymentStateV2, SignedEthTx,
-                 TryToAddress, ERC1155_CONTRACT, ERC721_CONTRACT, ETH_GAS, NFT_SWAP_CONTRACT};
+use crate::eth::{addr_from_raw_pubkey, decode_contract_call, gas_limit::ETH_MAX_TRADE_GAS, EthCoin, EthCoinType,
+                 MakerPaymentStateV2, SignedEthTx, TryToAddress, ERC1155_CONTRACT, ERC721_CONTRACT, NFT_SWAP_CONTRACT};
 use crate::{ParseCoinAssocTypes, RefundPaymentArgs, SendNftMakerPaymentArgs, SpendNftMakerPaymentArgs, TransactionErr,
             ValidateNftMakerPaymentArgs};
 
@@ -39,7 +39,7 @@ impl EthCoin {
                     0.into(),
                     Action::Call(*args.nft_swap_info.token_address),
                     data,
-                    U256::from(ETH_GAS),
+                    U256::from(ETH_MAX_TRADE_GAS), // TODO: fix to a more accurate const or estimated value
                 )
                 .compat()
                 .await
@@ -79,12 +79,12 @@ impl EthCoin {
             )
             .await?;
         let tx_from_rpc = self
-            .transaction(TransactionId::Hash(args.maker_payment_tx.hash))
+            .transaction(TransactionId::Hash(args.maker_payment_tx.tx_hash()))
             .await?;
         let tx_from_rpc = tx_from_rpc.as_ref().ok_or_else(|| {
             ValidatePaymentError::TxDoesNotExist(format!(
                 "Didn't find provided tx {:?} on ETH node",
-                args.maker_payment_tx.hash
+                args.maker_payment_tx.tx_hash()
             ))
         })?;
         validate_from_to_and_maker_status(tx_from_rpc, maker_address, *token_address, maker_status).await?;
@@ -138,7 +138,7 @@ impl EthCoin {
         let contract_type = args.contract_type;
         let (decoded, index_bytes) = try_tx_s!(get_decoded_tx_data_and_index_bytes(
             contract_type,
-            &args.maker_payment_tx.data
+            args.maker_payment_tx.unsigned().data()
         ));
 
         let (state, htlc_params) = try_tx_s!(
@@ -154,9 +154,14 @@ impl EthCoin {
         match self.coin_type {
             EthCoinType::Nft { .. } => {
                 let data = try_tx_s!(self.prepare_spend_nft_maker_v2_data(&args, decoded, htlc_params, state));
-                self.sign_and_send_transaction(0.into(), Action::Call(*etomic_swap_contract), data, U256::from(ETH_GAS))
-                    .compat()
-                    .await
+                self.sign_and_send_transaction(
+                    0.into(),
+                    Action::Call(*etomic_swap_contract),
+                    data,
+                    U256::from(ETH_MAX_TRADE_GAS), // TODO: fix to a more accurate const or estimated value
+                )
+                .compat()
+                .await
             },
             EthCoinType::Eth | EthCoinType::Erc20 { .. } => Err(TransactionErr::ProtocolNotSupported(
                 "ETH and ERC20 Protocols are not supported for NFT Swaps".to_string(),
@@ -169,7 +174,7 @@ impl EthCoin {
         args: RefundPaymentArgs<'_>,
     ) -> Result<SignedEthTx, TransactionErr> {
         let _etomic_swap_contract = try_tx_s!(args.swap_contract_address.try_to_address());
-        let tx: UnverifiedTransaction = try_tx_s!(rlp::decode(args.payment_tx));
+        let tx: UnverifiedTransactionWrapper = try_tx_s!(rlp::decode(args.payment_tx));
         let _payment = try_tx_s!(SignedEthTx::new(tx));
         todo!()
     }

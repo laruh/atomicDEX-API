@@ -257,7 +257,7 @@ impl BchDockerOps {
         let adex_slp = SlpToken::new(
             8,
             "ADEXSLP".into(),
-            slp_genesis_tx.tx_hash().as_slice().into(),
+            slp_genesis_tx.tx_hash_as_bytes().as_slice().into(),
             self.coin.clone(),
             1,
         )
@@ -273,7 +273,7 @@ impl BchDockerOps {
         };
         self.coin.wait_for_confirmations(confirm_payment_input).wait().unwrap();
         *SLP_TOKEN_OWNERS.lock().unwrap() = slp_privkeys;
-        *SLP_TOKEN_ID.lock().unwrap() = slp_genesis_tx.tx_hash().as_slice().into();
+        *SLP_TOKEN_ID.lock().unwrap() = slp_genesis_tx.tx_hash_as_bytes().as_slice().into();
     }
 }
 

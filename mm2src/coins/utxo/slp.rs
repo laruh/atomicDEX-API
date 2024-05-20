@@ -1785,6 +1785,7 @@ impl MmCoin for SlpToken {
         &self,
         value: TradePreimageValue,
         stage: FeeApproxStage,
+        _include_refund_fee: bool, // refund fee is taken from swap output
     ) -> TradePreimageResult<TradeFee> {
         let slp_amount = match value {
             TradePreimageValue::Exact(decimal) | TradePreimageValue::UpperBound(decimal) => {

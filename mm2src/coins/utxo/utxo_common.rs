@@ -4277,7 +4277,7 @@ pub async fn validate_payment<'a, T: UtxoCommonOps>(
     let amount = sat_from_big_decimal(&amount, coin.as_ref().decimals)?;
 
     let expected_redeem = tx_type_with_secret_hash.redeem_script(time_lock, first_pub0, second_pub0);
-    let tx_hash = tx.tx_hash();
+    let tx_hash = tx.tx_hash_as_bytes();
 
     let tx_from_rpc = retry_on_err!(async {
         coin.as_ref()

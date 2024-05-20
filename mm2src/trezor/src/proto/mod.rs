@@ -106,6 +106,7 @@ trezor_message_impl!(TxAckPrevExtraData, MessageType::TxAck);
 
 // Ethereum
 trezor_message_impl!(EthereumSignTx, MessageType::EthereumSignTx);
+trezor_message_impl!(EthereumSignTxEIP1559, MessageType::EthereumSignTxEip1559);
 trezor_message_impl!(EthereumTxRequest, MessageType::EthereumTxRequest);
 trezor_message_impl!(EthereumTxAck, MessageType::EthereumTxAck);
 trezor_message_impl!(EthereumGetAddress, MessageType::EthereumGetAddress);

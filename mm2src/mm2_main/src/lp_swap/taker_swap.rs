@@ -9,7 +9,7 @@ use super::{broadcast_my_swap_status, broadcast_swap_message, broadcast_swap_msg
             recv_swap_msg, swap_topic, wait_for_maker_payment_conf_until, AtomicSwap, LockedAmount, MySwapInfo,
             NegotiationDataMsg, NegotiationDataV2, NegotiationDataV3, RecoveredSwap, RecoveredSwapAction, SavedSwap,
             SavedSwapIo, SavedTradeFee, SwapConfirmationsSettings, SwapError, SwapMsg, SwapPubkeys, SwapTxDataMsg,
-            SwapsContext, TransactionIdentifier, WAIT_CONFIRM_INTERVAL_SEC};
+            SwapsContext, TransactionIdentifier, INCLUDE_REFUND_FEE, NO_REFUND_FEE, WAIT_CONFIRM_INTERVAL_SEC};
 use crate::mm2::lp_network::subscribe_to_topic;
 use crate::mm2::lp_ordermatch::TakerOrderBuilder;
 use crate::mm2::lp_swap::swap_v2_common::mark_swap_as_finished;
@@ -1009,7 +1009,9 @@ impl TakerSwap {
                 )]))
             },
         };
-        let get_sender_trade_fee_fut = self.taker_coin.get_sender_trade_fee(preimage_value, stage);
+        let get_sender_trade_fee_fut = self
+            .taker_coin
+            .get_sender_trade_fee(preimage_value, stage, NO_REFUND_FEE);
         let taker_payment_trade_fee = match get_sender_trade_fee_fut.await {
             Ok(fee) => fee,
             Err(e) => {
@@ -1286,7 +1288,7 @@ impl TakerSwap {
             },
         };
 
-        let tx_hash = transaction.tx_hash();
+        let tx_hash = transaction.tx_hash_as_bytes();
         info!("Taker fee tx hash {:02x}", tx_hash);
         let tx_ident = TransactionIdentifier {
             tx_hex: BytesJson::from(transaction.tx_hex()),
@@ -1370,7 +1372,7 @@ impl TakerSwap {
             },
         };
 
-        let tx_hash = maker_payment.tx_hash();
+        let tx_hash = maker_payment.tx_hash_as_bytes();
         info!("Got maker payment {:02x}", tx_hash);
         let tx_ident = TransactionIdentifier {
             tx_hex: BytesJson::from(maker_payment.tx_hex()),
@@ -1570,7 +1572,7 @@ impl TakerSwap {
             },
         };
 
-        let tx_hash = transaction.tx_hash();
+        let tx_hash = transaction.tx_hash_as_bytes();
         let tx_hex = BytesJson::from(transaction.tx_hex());
         info!("Taker payment tx hash {:02x}", tx_hash);
         let tx_ident = TransactionIdentifier {
@@ -1611,7 +1613,7 @@ impl TakerSwap {
             match payment_fut_pair.await {
                 Ok((maker_payment_spend, taker_payment_refund)) => {
                     let watcher_data = self.create_watcher_data(
-                        transaction.tx_hash().into_vec(),
+                        transaction.tx_hash_as_bytes().into_vec(),
                         maker_payment_spend.tx_hex(),
                         taker_payment_refund.tx_hex(),
                     );
@@ -1739,7 +1741,7 @@ impl TakerSwap {
         };
         drop(send_abort_handle);
         drop(watcher_broadcast_abort_handle);
-        let tx_hash = tx.tx_hash();
+        let tx_hash = tx.tx_hash_as_bytes();
         info!("Taker payment spend tx {:02x}", tx_hash);
         let tx_ident = TransactionIdentifier {
             tx_hex: BytesJson::from(tx.tx_hex()),
@@ -1820,7 +1822,7 @@ impl TakerSwap {
             &self.p2p_privkey,
         );
 
-        let tx_hash = transaction.tx_hash();
+        let tx_hash = transaction.tx_hash_as_bytes();
         info!("Maker payment spend tx {:02x}", tx_hash);
         let tx_ident = TransactionIdentifier {
             tx_hex: BytesJson::from(transaction.tx_hex()),
@@ -1925,7 +1927,7 @@ impl TakerSwap {
             &self.p2p_privkey,
         );
 
-        let tx_hash = transaction.tx_hash();
+        let tx_hash = transaction.tx_hash_as_bytes();
         info!("Taker refund tx hash {:02x}", tx_hash);
         let tx_ident = TransactionIdentifier {
             tx_hex: BytesJson::from(transaction.tx_hex()),
@@ -2097,14 +2099,14 @@ impl TakerSwap {
                         return ERR!(
                             "Maker payment was already spent by {} tx {:02x}",
                             self.maker_coin.ticker(),
-                            tx.tx_hash()
+                            tx.tx_hash_as_bytes()
                         )
                     },
                     Ok(Some(FoundSwapTxSpend::Refunded(tx))) => {
                         return ERR!(
                             "Maker payment was already refunded by {} tx {:02x}",
                             self.maker_coin.ticker(),
-                            tx.tx_hash()
+                            tx.tx_hash_as_bytes()
                         )
                     },
                     Err(e) => return ERR!("Error {} when trying to find maker payment spend", e),
@@ -2250,7 +2252,7 @@ impl TakerSwap {
                 },
                 FoundSwapTxSpend::Refunded(tx) => ERR!(
                     "Taker payment has been refunded already by transaction {:02x}",
-                    tx.tx_hash()
+                    tx.tx_hash_as_bytes()
                 ),
             },
             None => {
@@ -2382,7 +2384,7 @@ pub async fn check_balance_for_taker_swap(
                 .mm_err(|e| CheckBalanceError::from_trade_preimage_error(e, my_coin.ticker()))?;
             let preimage_value = TradePreimageValue::Exact(volume.to_decimal());
             let taker_payment_trade_fee = my_coin
-                .get_sender_trade_fee(preimage_value, stage)
+                .get_sender_trade_fee(preimage_value, stage, INCLUDE_REFUND_FEE)
                 .await
                 .mm_err(|e| CheckBalanceError::from_trade_preimage_error(e, my_coin.ticker()))?;
             let maker_payment_spend_trade_fee = other_coin
@@ -2477,7 +2479,7 @@ pub async fn taker_swap_trade_preimage(
 
     let preimage_value = TradePreimageValue::Exact(my_coin_volume.to_decimal());
     let my_coin_trade_fee = my_coin
-        .get_sender_trade_fee(preimage_value, stage)
+        .get_sender_trade_fee(preimage_value, stage, NO_REFUND_FEE)
         .await
         .mm_err(|e| TradePreimageRpcError::from_trade_preimage_error(e, my_coin_ticker))?;
     let other_coin_trade_fee = other_coin
@@ -2602,7 +2604,7 @@ pub async fn calc_max_taker_vol(
     let max_possible = &balance - &locked;
     let preimage_value = TradePreimageValue::UpperBound(max_possible.to_decimal());
     let max_trade_fee = coin
-        .get_sender_trade_fee(preimage_value, stage)
+        .get_sender_trade_fee(preimage_value, stage, INCLUDE_REFUND_FEE)
         .await
         .mm_err(|e| CheckBalanceError::from_trade_preimage_error(e, my_coin))?;
 

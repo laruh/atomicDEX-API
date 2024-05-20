@@ -5921,12 +5921,13 @@ fn test_sign_raw_transaction_p2wpkh() {
 
 #[cfg(all(feature = "run-device-tests", not(target_arch = "wasm32")))]
 mod trezor_tests {
-    use coins::eth::{eth_coin_from_conf_and_request, EthCoin, ETH_GAS};
+    use coins::eth::{eth_coin_from_conf_and_request, gas_limit, EthCoin};
     use coins::for_tests::test_withdraw_init_loop;
     use coins::rpc_command::account_balance::{AccountBalanceParams, AccountBalanceRpcOps};
     use coins::rpc_command::get_new_address::{GetNewAddressParams, GetNewAddressRpcOps};
     use coins::rpc_command::init_create_account::for_tests::test_create_new_account_init_loop;
     use coins::utxo::{utxo_standard::UtxoStandardCoin, UtxoActivationParams};
+    use coins::EthGasLimitOption;
     use coins::{lp_coinfind, CoinProtocol, MmCoinEnum, PrivKeyBuildPolicy};
     use coins_activation::platform_for_tests::init_platform_coin_with_tokens_loop;
     use coins_activation::{for_tests::init_standalone_coin_loop, InitStandaloneCoinReq};
@@ -6310,11 +6311,29 @@ mod trezor_tests {
             "0.00001",
             None, // try withdraw from default account
             Some(WithdrawFee::EthGas {
-                gas: ETH_GAS,
+                gas: gas_limit::ETH_SEND_COINS,
                 gas_price: 0.1_f32.try_into().unwrap(),
             }),
         ))
-        .expect("withdraw must end successfully");
+        .expect("withdraw eth must end successfully");
+        log!(
+            "tx_hex={}",
+            serde_json::to_string(&tx_details.tx.tx_hex().unwrap()).unwrap()
+        );
+        // try to create eth withdrawal eip1559 tx
+        let tx_details = block_on(test_withdraw_init_loop(
+            ctx.clone(),
+            ticker_coin,
+            "0xc06eFafa6527fc4b3C8F69Afb173964A3780a104",
+            "0.00001",
+            None, // try withdraw from default account
+            Some(WithdrawFee::EthGasEip1559 {
+                gas_option: EthGasLimitOption::Set(gas_limit::ETH_SEND_COINS),
+                max_fee_per_gas: 12.3_f32.try_into().unwrap(),
+                max_priority_fee_per_gas: 1.2_f32.try_into().unwrap(),
+            }),
+        ))
+        .expect("withdraw eth with eip1559 tx must end successfully");
         log!(
             "tx_hex={}",
             serde_json::to_string(&tx_details.tx.tx_hex().unwrap()).unwrap()
@@ -6330,7 +6349,7 @@ mod trezor_tests {
         // TODO: ideally should be in loop to handle pin
         let new_addr_resp =
             block_on(eth_coin.get_new_address_rpc_without_conf(new_addr_params)).expect("new account created");
-        println!("create new_addr_resp={:?}", new_addr_resp);
+        log!("create new_addr_resp={:?}", new_addr_resp);
 
         // try to create JST ERC20 token withdrawal tx from a non-default account (should have some tokens on it)
         let tx_details = block_on(test_withdraw_init_loop(
@@ -6340,7 +6359,7 @@ mod trezor_tests {
             "0.000000000000000001",  // 1 wei
             Some("m/44'/1'/0'/0/1"), // Note: Trezor uses 1' type for all testnets
             Some(WithdrawFee::EthGas {
-                gas: ETH_GAS,
+                gas: gas_limit::ETH_SEND_COINS,
                 gas_price: 0.1_f32.try_into().unwrap(),
             }),
         ))

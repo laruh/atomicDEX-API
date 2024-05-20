@@ -3,7 +3,7 @@
 //! *Note: it's expected that the following data types will be moved to mm2_rpc::data when mm2 is refactored to be able to handle them*
 //!
 
-use mm2_rpc::data::legacy::{ElectrumProtocol, GasStationPricePolicy, UtxoMergeParams};
+use mm2_rpc::data::legacy::{ElectrumProtocol, UtxoMergeParams};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -22,12 +22,6 @@ pub(crate) struct EnableRequest {
     swap_contract_address: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     fallback_swap_contract: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    gas_station_url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    gas_station_decimals: Option<u8>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    gas_station_policy: Option<GasStationPricePolicy>,
     #[serde(skip_serializing_if = "Option::is_none")]
     mm2: Option<u8>,
     #[serde(default)]

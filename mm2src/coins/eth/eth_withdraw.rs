@@ -1,7 +1,8 @@
-use super::{checksum_address, get_eth_gas_details, u256_to_big_decimal, wei_from_big_decimal, EthCoinType,
-            EthDerivationMethod, EthPrivKeyPolicy, Public, WithdrawError, WithdrawRequest, WithdrawResult,
-            ERC20_CONTRACT, H160, H256};
-use crate::eth::{Action, Address, EthTxFeeDetails, KeyPair, SignedEthTx, UnSignedEthTx};
+use super::{checksum_address, u256_to_big_decimal, wei_from_big_decimal, EthCoinType, EthDerivationMethod,
+            EthPrivKeyPolicy, Public, WithdrawError, WithdrawRequest, WithdrawResult, ERC20_CONTRACT, H160, H256};
+use crate::eth::{calc_total_fee, get_eth_gas_details_from_withdraw_fee, tx_builder_with_pay_for_gas_option,
+                 tx_type_from_pay_for_gas_option, Action, Address, EthTxFeeDetails, KeyPair, PayForGasOption,
+                 SignedEthTx, TransactionWrapper, UnSignedEthTxBuilder};
 use crate::hd_wallet::{HDCoinWithdrawOps, HDWalletOps, WithdrawFrom, WithdrawSenderAddress};
 use crate::rpc_command::init_withdraw::{WithdrawInProgressStatus, WithdrawTaskHandleShared};
 use crate::{BytesJson, CoinWithDerivationMethod, EthCoin, GetWithdrawSenderAddress, PrivKeyPolicy, TransactionData,
@@ -49,7 +50,7 @@ where
     async fn sign_tx_with_trezor(
         &self,
         derivation_path: &DerivationPath,
-        unsigned_tx: &UnSignedEthTx,
+        unsigned_tx: &TransactionWrapper,
     ) -> Result<SignedEthTx, MmError<WithdrawError>>;
 
     /// Transforms the `from` parameter of the withdrawal request into an address.
@@ -121,22 +122,22 @@ where
     async fn sign_withdraw_tx(
         &self,
         req: &WithdrawRequest,
-        unsigned_tx: UnSignedEthTx,
+        unsigned_tx: TransactionWrapper,
     ) -> Result<(H256, BytesJson), MmError<WithdrawError>> {
         let coin = self.coin();
         match coin.priv_key_policy {
             EthPrivKeyPolicy::Iguana(_) | EthPrivKeyPolicy::HDWallet { .. } => {
                 let key_pair = self.get_key_pair(req)?;
-                let signed = unsigned_tx.sign(key_pair.secret(), Some(coin.chain_id));
+                let signed = unsigned_tx.sign(key_pair.secret(), Some(coin.chain_id))?;
                 let bytes = rlp::encode(&signed);
 
-                Ok((signed.hash, BytesJson::from(bytes.to_vec())))
+                Ok((signed.tx_hash(), BytesJson::from(bytes.to_vec())))
             },
             EthPrivKeyPolicy::Trezor => {
                 let derivation_path = self.get_withdraw_derivation_path(req).await?;
                 let signed = self.sign_tx_with_trezor(&derivation_path, &unsigned_tx).await?;
                 let bytes = rlp::encode(&signed);
-                Ok((signed.hash, BytesJson::from(bytes.to_vec())))
+                Ok((signed.tx_hash(), BytesJson::from(bytes.to_vec())))
             },
             #[cfg(target_arch = "wasm32")]
             EthPrivKeyPolicy::Metamask(_) => MmError::err(WithdrawError::InternalError("invalid policy".to_owned())),
@@ -223,7 +224,7 @@ where
         };
         let eth_value_dec = u256_to_big_decimal(eth_value, coin.decimals)?;
 
-        let (gas, gas_price) = get_eth_gas_details(
+        let (gas, pay_for_gas_option) = get_eth_gas_details_from_withdraw_fee(
             coin,
             req.fee.clone(),
             eth_value,
@@ -233,7 +234,7 @@ where
             false,
         )
         .await?;
-        let total_fee = gas * gas_price;
+        let total_fee = calc_total_fee(gas, &pay_for_gas_option)?;
         let total_fee_dec = u256_to_big_decimal(total_fee, coin.decimals)?;
 
         if req.max && coin.coin_type == EthCoinType::Eth {
@@ -261,23 +262,29 @@ where
                     .await?
                     .map_to_mm(WithdrawError::Transport)?;
 
-                let unsigned_tx = UnSignedEthTx {
-                    nonce,
-                    value: eth_value,
-                    action: Action::Call(call_addr),
-                    data: data.clone(),
-                    gas,
-                    gas_price,
-                };
+                let tx_type = tx_type_from_pay_for_gas_option!(pay_for_gas_option);
+                if !coin.is_tx_type_supported(&tx_type) {
+                    return MmError::err(WithdrawError::TxTypeNotSupported);
+                }
+                let tx_builder =
+                    UnSignedEthTxBuilder::new(tx_type, nonce, gas, Action::Call(call_addr), eth_value, data);
+                let tx_builder = tx_builder_with_pay_for_gas_option(coin, tx_builder, &pay_for_gas_option)?;
+                let unsigned_tx = tx_builder
+                    .build()
+                    .map_to_mm(|e| WithdrawError::InternalError(e.to_string()))?;
                 self.sign_withdraw_tx(&req, unsigned_tx).await?
             },
             #[cfg(target_arch = "wasm32")]
             EthPrivKeyPolicy::Metamask(_) => {
+                let gas_price = pay_for_gas_option.get_gas_price();
+                let (max_fee_per_gas, max_priority_fee_per_gas) = pay_for_gas_option.get_fee_per_gas();
                 let tx_to_send = TransactionRequest {
                     from: my_address,
                     to: Some(to_addr),
                     gas: Some(gas),
-                    gas_price: Some(gas_price),
+                    gas_price,
+                    max_fee_per_gas,
+                    max_priority_fee_per_gas,
                     value: Some(eth_value),
                     data: Some(data.into()),
                     nonce: None,
@@ -298,7 +305,7 @@ where
         } else {
             0.into()
         };
-        let fee_details = EthTxFeeDetails::new(gas, gas_price, fee_coin)?;
+        let fee_details = EthTxFeeDetails::new(gas, pay_for_gas_option, fee_coin)?;
         if coin.coin_type == EthCoinType::Eth {
             spent_by_me += &fee_details.total_fee;
         }
@@ -351,7 +358,7 @@ impl EthWithdraw for InitEthWithdraw {
     async fn sign_tx_with_trezor(
         &self,
         derivation_path: &DerivationPath,
-        unsigned_tx: &UnSignedEthTx,
+        unsigned_tx: &TransactionWrapper,
     ) -> Result<SignedEthTx, MmError<WithdrawError>> {
         let coin = self.coin();
         let crypto_ctx = CryptoCtx::from_ctx(&self.ctx)?;
@@ -410,7 +417,7 @@ impl EthWithdraw for StandardEthWithdraw {
     async fn sign_tx_with_trezor(
         &self,
         _derivation_path: &DerivationPath,
-        _unsigned_tx: &UnSignedEthTx,
+        _unsigned_tx: &TransactionWrapper,
     ) -> Result<SignedEthTx, MmError<WithdrawError>> {
         async {
             Err(MmError::new(WithdrawError::UnsupportedError(String::from(

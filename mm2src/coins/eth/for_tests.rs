@@ -53,10 +53,7 @@ pub(crate) fn eth_coin_from_keypair(
     let eth_coin = EthCoin(Arc::new(EthCoinImpl {
         coin_type,
         decimals: 18,
-        gas_station_url: None,
-        gas_station_decimals: ETH_GAS_STATION_DECIMALS,
         history_sync_state: Mutex::new(HistorySyncState::NotEnabled),
-        gas_station_policy: GasStationPricePolicy::MeanAverageFast,
         sign_message_prefix: Some(String::from("Ethereum Signed Message:\n")),
         priv_key_policy: key_pair.into(),
         derivation_method: Arc::new(DerivationMethod::SingleAddress(my_address)),
@@ -67,12 +64,15 @@ pub(crate) fn eth_coin_from_keypair(
         web3_instances: AsyncMutex::new(web3_instances),
         ctx: ctx.weak(),
         required_confirmations: 1.into(),
+        swap_txfee_policy: Mutex::new(SwapTxFeePolicy::Internal),
         chain_id,
         trezor_coin: None,
         logs_block_range: DEFAULT_LOGS_BLOCK_RANGE,
         address_nonce_locks: Arc::new(AsyncMutex::new(new_nonce_lock())),
+        max_eth_tx_type: None,
         erc20_tokens_infos: Default::default(),
         nfts_infos: Arc::new(Default::default()),
+        platform_fee_estimator_state: Arc::new(FeeEstimatorState::CoinNotSupported),
         abortable_system: AbortableQueue::default(),
     }));
     (ctx, eth_coin)

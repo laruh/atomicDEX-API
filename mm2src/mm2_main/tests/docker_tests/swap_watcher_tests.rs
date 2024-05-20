@@ -1224,7 +1224,7 @@ fn test_watcher_validate_taker_fee_utxo() {
 
     let validate_taker_fee_res = taker_coin
         .watcher_validate_taker_fee(WatcherValidateTakerFeeInput {
-            taker_fee_hash: taker_fee.tx_hash().into_vec(),
+            taker_fee_hash: taker_fee.tx_hash_as_bytes().into_vec(),
             sender_pubkey: taker_pubkey.to_vec(),
             min_block_number: 0,
             fee_addr: DEX_FEE_ADDR_RAW_PUBKEY.to_vec(),
@@ -1235,7 +1235,7 @@ fn test_watcher_validate_taker_fee_utxo() {
 
     let error = taker_coin
         .watcher_validate_taker_fee(WatcherValidateTakerFeeInput {
-            taker_fee_hash: taker_fee.tx_hash().into_vec(),
+            taker_fee_hash: taker_fee.tx_hash_as_bytes().into_vec(),
             sender_pubkey: maker_coin.my_public_key().unwrap().to_vec(),
             min_block_number: 0,
             fee_addr: DEX_FEE_ADDR_RAW_PUBKEY.to_vec(),
@@ -1255,7 +1255,7 @@ fn test_watcher_validate_taker_fee_utxo() {
 
     let error = taker_coin
         .watcher_validate_taker_fee(WatcherValidateTakerFeeInput {
-            taker_fee_hash: taker_fee.tx_hash().into_vec(),
+            taker_fee_hash: taker_fee.tx_hash_as_bytes().into_vec(),
             sender_pubkey: taker_pubkey.to_vec(),
             min_block_number: std::u64::MAX,
             fee_addr: DEX_FEE_ADDR_RAW_PUBKEY.to_vec(),
@@ -1277,7 +1277,7 @@ fn test_watcher_validate_taker_fee_utxo() {
 
     let error = taker_coin
         .watcher_validate_taker_fee(WatcherValidateTakerFeeInput {
-            taker_fee_hash: taker_fee.tx_hash().into_vec(),
+            taker_fee_hash: taker_fee.tx_hash_as_bytes().into_vec(),
             sender_pubkey: taker_pubkey.to_vec(),
             min_block_number: 0,
             fee_addr: DEX_FEE_ADDR_RAW_PUBKEY.to_vec(),
@@ -1296,7 +1296,7 @@ fn test_watcher_validate_taker_fee_utxo() {
 
     let error = taker_coin
         .watcher_validate_taker_fee(WatcherValidateTakerFeeInput {
-            taker_fee_hash: taker_fee.tx_hash().into_vec(),
+            taker_fee_hash: taker_fee.tx_hash_as_bytes().into_vec(),
             sender_pubkey: taker_pubkey.to_vec(),
             min_block_number: 0,
             fee_addr: taker_pubkey.to_vec(),
@@ -1349,7 +1349,7 @@ fn test_watcher_validate_taker_fee_eth() {
 
     let validate_taker_fee_res = taker_coin
         .watcher_validate_taker_fee(WatcherValidateTakerFeeInput {
-            taker_fee_hash: taker_fee.tx_hash().into_vec(),
+            taker_fee_hash: taker_fee.tx_hash_as_bytes().into_vec(),
             sender_pubkey: taker_pubkey.to_vec(),
             min_block_number: 0,
             fee_addr: DEX_FEE_ADDR_RAW_PUBKEY.to_vec(),
@@ -1361,7 +1361,7 @@ fn test_watcher_validate_taker_fee_eth() {
     let wrong_keypair = key_pair_from_secret(random_secp256k1_secret().as_slice()).unwrap();
     let error = taker_coin
         .watcher_validate_taker_fee(WatcherValidateTakerFeeInput {
-            taker_fee_hash: taker_fee.tx_hash().into_vec(),
+            taker_fee_hash: taker_fee.tx_hash_as_bytes().into_vec(),
             sender_pubkey: wrong_keypair.public().to_vec(),
             min_block_number: 0,
             fee_addr: DEX_FEE_ADDR_RAW_PUBKEY.to_vec(),
@@ -1381,7 +1381,7 @@ fn test_watcher_validate_taker_fee_eth() {
 
     let error = taker_coin
         .watcher_validate_taker_fee(WatcherValidateTakerFeeInput {
-            taker_fee_hash: taker_fee.tx_hash().into_vec(),
+            taker_fee_hash: taker_fee.tx_hash_as_bytes().into_vec(),
             sender_pubkey: taker_pubkey.to_vec(),
             min_block_number: std::u64::MAX,
             fee_addr: DEX_FEE_ADDR_RAW_PUBKEY.to_vec(),
@@ -1403,7 +1403,7 @@ fn test_watcher_validate_taker_fee_eth() {
 
     let error = taker_coin
         .watcher_validate_taker_fee(WatcherValidateTakerFeeInput {
-            taker_fee_hash: taker_fee.tx_hash().into_vec(),
+            taker_fee_hash: taker_fee.tx_hash_as_bytes().into_vec(),
             sender_pubkey: taker_pubkey.to_vec(),
             min_block_number: 0,
             fee_addr: taker_pubkey.to_vec(),
@@ -1456,7 +1456,7 @@ fn test_watcher_validate_taker_fee_erc20() {
 
     let validate_taker_fee_res = taker_coin
         .watcher_validate_taker_fee(WatcherValidateTakerFeeInput {
-            taker_fee_hash: taker_fee.tx_hash().into_vec(),
+            taker_fee_hash: taker_fee.tx_hash_as_bytes().into_vec(),
             sender_pubkey: taker_pubkey.to_vec(),
             min_block_number: 0,
             fee_addr: DEX_FEE_ADDR_RAW_PUBKEY.to_vec(),
@@ -1468,7 +1468,7 @@ fn test_watcher_validate_taker_fee_erc20() {
     let wrong_keypair = key_pair_from_secret(random_secp256k1_secret().as_slice()).unwrap();
     let error = taker_coin
         .watcher_validate_taker_fee(WatcherValidateTakerFeeInput {
-            taker_fee_hash: taker_fee.tx_hash().into_vec(),
+            taker_fee_hash: taker_fee.tx_hash_as_bytes().into_vec(),
             sender_pubkey: wrong_keypair.public().to_vec(),
             min_block_number: 0,
             fee_addr: DEX_FEE_ADDR_RAW_PUBKEY.to_vec(),
@@ -1488,7 +1488,7 @@ fn test_watcher_validate_taker_fee_erc20() {
 
     let error = taker_coin
         .watcher_validate_taker_fee(WatcherValidateTakerFeeInput {
-            taker_fee_hash: taker_fee.tx_hash().into_vec(),
+            taker_fee_hash: taker_fee.tx_hash_as_bytes().into_vec(),
             sender_pubkey: taker_pubkey.to_vec(),
             min_block_number: std::u64::MAX,
             fee_addr: DEX_FEE_ADDR_RAW_PUBKEY.to_vec(),
@@ -1510,7 +1510,7 @@ fn test_watcher_validate_taker_fee_erc20() {
 
     let error = taker_coin
         .watcher_validate_taker_fee(WatcherValidateTakerFeeInput {
-            taker_fee_hash: taker_fee.tx_hash().into_vec(),
+            taker_fee_hash: taker_fee.tx_hash_as_bytes().into_vec(),
             sender_pubkey: taker_pubkey.to_vec(),
             min_block_number: 0,
             fee_addr: taker_pubkey.to_vec(),

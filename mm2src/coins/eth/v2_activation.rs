@@ -127,6 +127,10 @@ impl From<ParseChainTypeError> for EthActivationV2Error {
     fn from(e: ParseChainTypeError) -> Self { EthActivationV2Error::InternalError(e.to_string()) }
 }
 
+impl From<String> for EthActivationV2Error {
+    fn from(e: String) -> Self { EthActivationV2Error::InternalError(e) }
+}
+
 impl From<EnableCoinBalanceError> for EthActivationV2Error {
     fn from(e: EnableCoinBalanceError) -> Self {
         match e {
@@ -179,10 +183,6 @@ pub struct EthActivationV2Request {
     pub fallback_swap_contract: Option<Address>,
     #[serde(default)]
     pub contract_supports_watchers: bool,
-    pub gas_station_url: Option<String>,
-    pub gas_station_decimals: Option<u8>,
-    #[serde(default)]
-    pub gas_station_policy: GasStationPricePolicy,
     pub mm2: Option<u8>,
     pub required_confirmations: Option<u64>,
     #[serde(default)]
@@ -254,6 +254,10 @@ impl From<GetNftInfoError> for EthTokenActivationError {
 
 impl From<ParseChainTypeError> for EthTokenActivationError {
     fn from(e: ParseChainTypeError) -> Self { EthTokenActivationError::InternalError(e.to_string()) }
+}
+
+impl From<String> for EthTokenActivationError {
+    fn from(e: String) -> Self { EthTokenActivationError::InternalError(e) }
 }
 
 /// Represents the parameters required for activating either an ERC-20 token or an NFT on the Ethereum platform.
@@ -390,27 +394,30 @@ impl EthCoin {
         // all spawned futures related to `ERC20` coin will be aborted as well.
         let abortable_system = ctx.abortable_system.create_subsystem()?;
 
+        let coin_type = EthCoinType::Erc20 {
+            platform: protocol.platform,
+            token_addr: protocol.token_addr,
+        };
+        let platform_fee_estimator_state = FeeEstimatorState::init_fee_estimator(&ctx, &conf, &coin_type).await?;
+        let max_eth_tx_type = get_max_eth_tx_type_conf(&ctx, &conf, &coin_type).await?;
+
         let token = EthCoinImpl {
             priv_key_policy: self.priv_key_policy.clone(),
             // We inherit the derivation method from the parent/platform coin
             // If we want a new wallet for each token we can add this as an option in the future
             // storage ticker will be the platform coin ticker
             derivation_method: self.derivation_method.clone(),
-            coin_type: EthCoinType::Erc20 {
-                platform: protocol.platform,
-                token_addr: protocol.token_addr,
-            },
+            coin_type,
             sign_message_prefix: self.sign_message_prefix.clone(),
             swap_contract_address: self.swap_contract_address,
             fallback_swap_contract: self.fallback_swap_contract,
             contract_supports_watchers: self.contract_supports_watchers,
             decimals,
             ticker,
-            gas_station_url: self.gas_station_url.clone(),
-            gas_station_decimals: self.gas_station_decimals,
-            gas_station_policy: self.gas_station_policy.clone(),
             web3_instances: AsyncMutex::new(web3_instances),
             history_sync_state: Mutex::new(self.history_sync_state.lock().unwrap().clone()),
+            swap_txfee_policy: Mutex::new(SwapTxFeePolicy::Internal),
+            max_eth_tx_type,
             ctx: self.ctx.clone(),
             required_confirmations,
             chain_id: self.chain_id,
@@ -419,6 +426,7 @@ impl EthCoin {
             address_nonce_locks: self.address_nonce_locks.clone(),
             erc20_tokens_infos: Default::default(),
             nfts_infos: Default::default(),
+            platform_fee_estimator_state,
             abortable_system,
         };
 
@@ -437,6 +445,12 @@ impl EthCoin {
         let chain = Chain::from_ticker(self.ticker())?;
         let ticker = chain.to_nft_ticker().to_string();
 
+        let ctx = MmArc::from_weak(&self.ctx)
+            .ok_or_else(|| String::from("No context"))
+            .map_err(EthTokenActivationError::InternalError)?;
+
+        let conf = coin_conf(&ctx, &ticker);
+
         // Create an abortable system linked to the `platform_coin` (which is self) so if the platform coin is disabled,
         // all spawned futures related to global Non-Fungible Token will be aborted as well.
         let abortable_system = self.abortable_system.create_subsystem()?;
@@ -444,12 +458,15 @@ impl EthCoin {
         // Todo: support HD wallet for NFTs, currently we get nfts for enabled address only and there might be some issues when activating NFTs while ETH is activated with HD wallet
         let my_address = self.derivation_method.single_addr_or_err().await?;
         let nft_infos = get_nfts_for_activation(&chain, &my_address, url).await?;
+        let coin_type = EthCoinType::Nft {
+            platform: self.ticker.clone(),
+        };
+        let platform_fee_estimator_state = FeeEstimatorState::init_fee_estimator(&ctx, &conf, &coin_type).await?;
+        let max_eth_tx_type = get_max_eth_tx_type_conf(&ctx, &conf, &coin_type).await?;
 
         let global_nft = EthCoinImpl {
             ticker,
-            coin_type: EthCoinType::Nft {
-                platform: self.ticker.clone(),
-            },
+            coin_type,
             priv_key_policy: self.priv_key_policy.clone(),
             derivation_method: self.derivation_method.clone(),
             sign_message_prefix: self.sign_message_prefix.clone(),
@@ -458,10 +475,9 @@ impl EthCoin {
             contract_supports_watchers: self.contract_supports_watchers,
             web3_instances: self.web3_instances.lock().await.clone().into(),
             decimals: self.decimals,
-            gas_station_url: self.gas_station_url.clone(),
-            gas_station_decimals: self.gas_station_decimals,
-            gas_station_policy: self.gas_station_policy.clone(),
             history_sync_state: Mutex::new(self.history_sync_state.lock().unwrap().clone()),
+            swap_txfee_policy: Mutex::new(SwapTxFeePolicy::Internal),
+            max_eth_tx_type,
             required_confirmations: AtomicU64::new(self.required_confirmations.load(Ordering::Relaxed)),
             ctx: self.ctx.clone(),
             chain_id: self.chain_id,
@@ -470,6 +486,7 @@ impl EthCoin {
             address_nonce_locks: self.address_nonce_locks.clone(),
             erc20_tokens_infos: Default::default(),
             nfts_infos: Arc::new(AsyncMutex::new(nft_infos)),
+            platform_fee_estimator_state,
             abortable_system,
         };
         Ok(EthCoin(Arc::new(global_nft)))
@@ -579,22 +596,24 @@ pub async fn eth_coin_from_conf_and_request_v2(
     // Create an abortable system linked to the `MmCtx` so if the app is stopped on `MmArc::stop`,
     // all spawned futures related to `ETH` coin will be aborted as well.
     let abortable_system = ctx.abortable_system.create_subsystem()?;
+    let coin_type = EthCoinType::Eth;
+    let platform_fee_estimator_state = FeeEstimatorState::init_fee_estimator(ctx, conf, &coin_type).await?;
+    let max_eth_tx_type = get_max_eth_tx_type_conf(ctx, conf, &coin_type).await?;
 
     let coin = EthCoinImpl {
         priv_key_policy,
         derivation_method: Arc::new(derivation_method),
-        coin_type: EthCoinType::Eth,
+        coin_type,
         sign_message_prefix,
         swap_contract_address: req.swap_contract_address,
         fallback_swap_contract: req.fallback_swap_contract,
         contract_supports_watchers: req.contract_supports_watchers,
         decimals: ETH_DECIMALS,
         ticker: ticker.to_string(),
-        gas_station_url: req.gas_station_url,
-        gas_station_decimals: req.gas_station_decimals.unwrap_or(ETH_GAS_STATION_DECIMALS),
-        gas_station_policy: req.gas_station_policy,
         web3_instances: AsyncMutex::new(web3_instances),
         history_sync_state: Mutex::new(HistorySyncState::NotEnabled),
+        swap_txfee_policy: Mutex::new(SwapTxFeePolicy::Internal),
+        max_eth_tx_type,
         ctx: ctx.weak(),
         required_confirmations,
         chain_id,
@@ -603,6 +622,7 @@ pub async fn eth_coin_from_conf_and_request_v2(
         address_nonce_locks,
         erc20_tokens_infos: Default::default(),
         nfts_infos: Default::default(),
+        platform_fee_estimator_state,
         abortable_system,
     };
 

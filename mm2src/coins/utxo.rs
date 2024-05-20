@@ -183,7 +183,7 @@ impl Transaction for UtxoTx {
         }
     }
 
-    fn tx_hash(&self) -> BytesJson { self.hash().reversed().to_vec().into() }
+    fn tx_hash_as_bytes(&self) -> BytesJson { self.hash().reversed().to_vec().into() }
 }
 
 impl From<JsonRpcError> for BalanceError {

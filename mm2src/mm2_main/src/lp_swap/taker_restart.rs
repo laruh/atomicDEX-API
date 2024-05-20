@@ -103,7 +103,7 @@ pub async fn check_maker_payment_spend_and_add_event(
         })
         .await {
             Ok(Some(FoundSwapTxSpend::Spent(maker_payment_spend_tx))) => maker_payment_spend_tx,
-            Ok(Some(FoundSwapTxSpend::Refunded(maker_payment_refund_tx))) => return ERR!("Maker has cheated by both spending the taker payment, and refunding the maker payment with transaction {:#?}", maker_payment_refund_tx.tx_hash()),
+            Ok(Some(FoundSwapTxSpend::Refunded(maker_payment_refund_tx))) => return ERR!("Maker has cheated by both spending the taker payment, and refunding the maker payment with transaction {:#?}", maker_payment_refund_tx.tx_hash_as_bytes()),
             Ok(None) => return Ok(TakerSwapCommand::SpendMakerPayment),
             Err(e) => return ERR!("Error {} when trying to find maker payment spend", e)
         };
@@ -124,7 +124,7 @@ pub async fn check_maker_payment_spend_and_add_event(
         .await
         .map_err(|e| e.to_string())?;
 
-    let tx_hash = maker_payment_spend_tx.tx_hash();
+    let tx_hash = maker_payment_spend_tx.tx_hash_as_bytes();
     info!("Watcher maker payment spend tx {:02x}", tx_hash);
     let tx_ident = TransactionIdentifier {
         tx_hex: Bytes::from(maker_payment_spend_tx.tx_hex()),
@@ -184,7 +184,7 @@ pub async fn add_taker_payment_spent_event(
     let secret_hash = swap.r().secret_hash.0.clone();
     let watcher_reward = swap.r().watcher_reward;
 
-    let tx_hash = taker_payment_spend_tx.tx_hash();
+    let tx_hash = taker_payment_spend_tx.tx_hash_as_bytes();
     info!("Taker payment spend tx {:02x}", tx_hash);
     let tx_ident = TransactionIdentifier {
         tx_hex: Bytes::from(taker_payment_spend_tx.tx_hex()),
@@ -245,7 +245,7 @@ pub async fn add_taker_payment_refunded_by_watcher_event(
         .await
         .map_err(|e| e.to_string())?;
 
-    let tx_hash = taker_payment_refund_tx.tx_hash();
+    let tx_hash = taker_payment_refund_tx.tx_hash_as_bytes();
     info!("Taker refund tx hash {:02x}", tx_hash);
     let tx_ident = TransactionIdentifier {
         tx_hex: Bytes::from(taker_payment_refund_tx.tx_hex()),

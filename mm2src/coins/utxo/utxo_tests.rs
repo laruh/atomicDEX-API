@@ -2616,6 +2616,7 @@ fn test_get_sender_trade_fee_dynamic_tx_fee() {
     let fee1 = block_on(coin.get_sender_trade_fee(
         TradePreimageValue::UpperBound(my_balance.clone()),
         FeeApproxStage::WithoutApprox,
+        false,
     ))
     .expect("!get_sender_trade_fee");
 
@@ -2624,15 +2625,19 @@ fn test_get_sender_trade_fee_dynamic_tx_fee() {
     let fee2 = block_on(coin.get_sender_trade_fee(
         TradePreimageValue::Exact(value_without_fee),
         FeeApproxStage::WithoutApprox,
+        false,
     ))
     .expect("!get_sender_trade_fee");
     assert_eq!(fee1, fee2);
 
     // `2.21934443` value was obtained as a result of executing the `max_taker_vol` RPC call for this wallet
     let max_taker_vol = BigDecimal::from_str("2.21934443").expect("!BigDecimal::from_str");
-    let fee3 =
-        block_on(coin.get_sender_trade_fee(TradePreimageValue::Exact(max_taker_vol), FeeApproxStage::WithoutApprox))
-            .expect("!get_sender_trade_fee");
+    let fee3 = block_on(coin.get_sender_trade_fee(
+        TradePreimageValue::Exact(max_taker_vol),
+        FeeApproxStage::WithoutApprox,
+        false,
+    ))
+    .expect("!get_sender_trade_fee");
     assert_eq!(fee1, fee3);
 }
 

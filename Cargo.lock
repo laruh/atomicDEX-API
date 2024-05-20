@@ -2260,7 +2260,7 @@ dependencies = [
 [[package]]
 name = "ethcore-transaction"
 version = "0.1.0"
-source = "git+https://github.com/KomodoPlatform/mm2-parity-ethereum.git#3326a6c3c12c1655f9dec57ad28b0983d8c08997"
+source = "git+https://github.com/KomodoPlatform/mm2-parity-ethereum.git?rev=mm2-v2.1.1#d5524212230c4773d01b2527e9b3c422a251e0dc"
 dependencies = [
  "ethereum-types",
  "ethkey",
@@ -2287,7 +2287,7 @@ dependencies = [
 [[package]]
 name = "ethkey"
 version = "0.3.0"
-source = "git+https://github.com/KomodoPlatform/mm2-parity-ethereum.git#3326a6c3c12c1655f9dec57ad28b0983d8c08997"
+source = "git+https://github.com/KomodoPlatform/mm2-parity-ethereum.git?rev=mm2-v2.1.1#d5524212230c4773d01b2527e9b3c422a251e0dc"
 dependencies = [
  "byteorder",
  "edit-distance",
@@ -4214,7 +4214,7 @@ checksum = "60302e4db3a61da70c0cb7991976248362f30319e88850c487b9b95bbf059e00"
 [[package]]
 name = "mem"
 version = "0.1.0"
-source = "git+https://github.com/KomodoPlatform/mm2-parity-ethereum.git#3326a6c3c12c1655f9dec57ad28b0983d8c08997"
+source = "git+https://github.com/KomodoPlatform/mm2-parity-ethereum.git?rev=mm2-v2.1.1#d5524212230c4773d01b2527e9b3c422a251e0dc"
 
 [[package]]
 name = "memchr"
@@ -4557,6 +4557,7 @@ dependencies = [
  "enum-primitive-derive",
  "enum_derives",
  "ethabi",
+ "ethcore-transaction",
  "ethereum-types",
  "futures 0.1.29",
  "futures 0.3.28",
@@ -4598,9 +4599,11 @@ dependencies = [
  "rand 0.7.3",
  "rcgen",
  "regex",
+ "rlp",
  "rmp-serde",
  "rpc",
  "rpc_task",
+ "rustc-hex",
  "rustls 0.21.10",
  "rustls-pemfile 1.0.2",
  "script",
@@ -8794,7 +8797,7 @@ dependencies = [
 [[package]]
 name = "unexpected"
 version = "0.1.0"
-source = "git+https://github.com/KomodoPlatform/mm2-parity-ethereum.git#3326a6c3c12c1655f9dec57ad28b0983d8c08997"
+source = "git+https://github.com/KomodoPlatform/mm2-parity-ethereum.git?rev=mm2-v2.1.1#d5524212230c4773d01b2527e9b3c422a251e0dc"
 
 [[package]]
 name = "unicode-bidi"
@@ -9162,7 +9165,7 @@ dependencies = [
 [[package]]
 name = "web3"
 version = "0.19.0"
-source = "git+https://github.com/KomodoPlatform/rust-web3?tag=v0.19.0#ec5e72a5c95e3935ea0c9ab77b501e3926686fa9"
+source = "git+https://github.com/KomodoPlatform/rust-web3?tag=v0.20.0#01de1d732e61c920cfb2fb1533db7d7110c8a457"
 dependencies = [
  "arrayvec 0.7.1",
  "base64 0.13.0",
