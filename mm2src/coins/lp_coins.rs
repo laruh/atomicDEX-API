@@ -86,7 +86,6 @@ use std::time::Duration;
 use std::{fmt, iter};
 use utxo_signer::with_key_pair::UtxoSignWithKeyPairError;
 use zcash_primitives::transaction::Transaction as ZTransaction;
-
 cfg_native! {
     use crate::lightning::LightningCoin;
     use crate::lightning::ln_conf::PlatformCoinConfirmationTargets;
@@ -121,6 +120,29 @@ macro_rules! try_f {
         match $e {
             Ok(ok) => ok,
             Err(e) => return Box::new(futures01::future::err(e.into())),
+        }
+    };
+}
+
+#[cfg(feature = "enable-solana")]
+macro_rules! try_tx_fus_err {
+    ($err: expr) => {
+        return Box::new(futures01::future::err(crate::TransactionErr::Plain(ERRL!(
+            "{:?}", $err
+        ))))
+    };
+}
+
+#[cfg(feature = "enable-solana")]
+macro_rules! try_tx_fus_opt {
+    ($e: expr, $err: expr) => {
+        match $e {
+            Some(ok) => ok,
+            None => {
+                return Box::new(futures01::future::err(crate::TransactionErr::Plain(ERRL!(
+                    "{:?}", $err
+                ))))
+            },
         }
     };
 }
@@ -276,7 +298,7 @@ pub use solana::spl::SplToken;
     not(target_os = "android"),
     not(target_arch = "wasm32")
 ))]
-pub use solana::{SolanaActivationParams, SolanaCoin, SolanaFeeDetails};
+pub use solana::{SolTransaction, SolanaActivationParams, SolanaCoin, SolanaFeeDetails};
 
 pub mod utxo;
 use utxo::bch::{bch_coin_with_policy, BchActivationRequest, BchCoin};
@@ -607,6 +629,8 @@ pub trait Transaction: fmt::Debug + 'static {
 pub enum TransactionEnum {
     UtxoTx(UtxoTx),
     SignedEthTx(SignedEthTx),
+    #[cfg(all(feature = "enable-solana", not(target_arch = "wasm32")))]
+    SolTransaction(SolTransaction),
     ZTransaction(ZTransaction),
     CosmosTransaction(CosmosTransaction),
     #[cfg(not(target_arch = "wasm32"))]
@@ -615,6 +639,8 @@ pub enum TransactionEnum {
 
 ifrom!(TransactionEnum, UtxoTx);
 ifrom!(TransactionEnum, SignedEthTx);
+#[cfg(all(feature = "enable-solana", not(target_arch = "wasm32")))]
+ifrom!(TransactionEnum, SolTransaction);
 ifrom!(TransactionEnum, ZTransaction);
 #[cfg(not(target_arch = "wasm32"))]
 ifrom!(TransactionEnum, LightningPayment);
@@ -638,6 +664,8 @@ impl Deref for TransactionEnum {
             TransactionEnum::CosmosTransaction(ref t) => t,
             #[cfg(not(target_arch = "wasm32"))]
             TransactionEnum::LightningPayment(ref p) => p,
+            #[cfg(all(feature = "enable-solana", not(target_arch = "wasm32")))]
+            TransactionEnum::SolTransaction(ref s) => s,
         }
     }
 }
@@ -4843,7 +4871,7 @@ pub async fn my_tx_history(ctx: MmArc, req: Json) -> Result<Response<Vec<u8>>, S
 }
 
 /// `get_trade_fee` rpc implementation.
-/// There is some consideration about this rpc:  
+/// There is some consideration about this rpc:
 /// for eth coin this rpc returns max possible trade fee (estimated for maximum possible gas limit for any kind of swap).
 /// However for eth coin, as part of fixing this issue https://github.com/KomodoPlatform/komodo-defi-framework/issues/1848,
 /// `max_taker_vol' and `trade_preimage` rpc now return more accurate required gas calculations.
