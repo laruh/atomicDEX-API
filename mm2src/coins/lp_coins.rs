@@ -21,8 +21,8 @@
 
 // `mockable` implementation uses these
 #![allow(
-    clippy::forget_ref,
-    clippy::forget_copy,
+    forgetting_references,
+    forgetting_copy_types,
     clippy::swap_ptr_to_ref,
     clippy::forget_non_drop
 )]
@@ -2434,17 +2434,14 @@ pub enum TradePreimageValue {
     UpperBound(BigDecimal),
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub enum SwapTxFeePolicy {
+    #[default]
     Unsupported,
     Internal,
     Low,
     Medium,
     High,
-}
-
-impl Default for SwapTxFeePolicy {
-    fn default() -> Self { SwapTxFeePolicy::Unsupported }
 }
 
 #[derive(Debug, Deserialize)]
@@ -3840,14 +3837,11 @@ impl CoinsContext {
 }
 
 /// This enum is used in coin activation requests.
-#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
+#[derive(Copy, Clone, Debug, Deserialize, Serialize, Default)]
 pub enum PrivKeyActivationPolicy {
+    #[default]
     ContextPrivKey,
     Trezor,
-}
-
-impl Default for PrivKeyActivationPolicy {
-    fn default() -> Self { PrivKeyActivationPolicy::ContextPrivKey }
 }
 
 impl PrivKeyActivationPolicy {
@@ -5457,7 +5451,6 @@ where
 
                 // First, derive all empty addresses and put it into `balances` with default balance.
                 let address_ids = (last_non_empty_address_id..checking_address_id)
-                    .into_iter()
                     .map(|address_id| HDAddressId { chain, address_id });
                 let empty_addresses =
                     coin.derive_addresses(hd_account, address_ids)
