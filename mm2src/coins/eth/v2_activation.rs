@@ -394,6 +394,8 @@ impl EthCoin {
         };
         let platform_fee_estimator_state = FeeEstimatorState::init_fee_estimator(&ctx, &conf, &coin_type).await?;
         let max_eth_tx_type = get_max_eth_tx_type_conf(&ctx, &conf, &coin_type).await?;
+        let gas_limit = extract_gas_limit_from_conf(&conf)
+            .map_to_mm(|e| EthTokenActivationError::InternalError(format!("invalid gas_limit config {}", e)))?;
 
         let token = EthCoinImpl {
             priv_key_policy: self.priv_key_policy.clone(),
@@ -421,6 +423,7 @@ impl EthCoin {
             erc20_tokens_infos: Default::default(),
             nfts_infos: Default::default(),
             platform_fee_estimator_state,
+            gas_limit,
             abortable_system,
         };
 
@@ -457,6 +460,8 @@ impl EthCoin {
         };
         let platform_fee_estimator_state = FeeEstimatorState::init_fee_estimator(&ctx, &conf, &coin_type).await?;
         let max_eth_tx_type = get_max_eth_tx_type_conf(&ctx, &conf, &coin_type).await?;
+        let gas_limit = extract_gas_limit_from_conf(&conf)
+            .map_to_mm(|e| EthTokenActivationError::InternalError(format!("invalid gas_limit config {}", e)))?;
 
         let global_nft = EthCoinImpl {
             ticker,
@@ -481,6 +486,7 @@ impl EthCoin {
             erc20_tokens_infos: Default::default(),
             nfts_infos: Arc::new(AsyncMutex::new(nft_infos)),
             platform_fee_estimator_state,
+            gas_limit,
             abortable_system,
         };
         Ok(EthCoin(Arc::new(global_nft)))
@@ -593,6 +599,8 @@ pub async fn eth_coin_from_conf_and_request_v2(
     let coin_type = EthCoinType::Eth;
     let platform_fee_estimator_state = FeeEstimatorState::init_fee_estimator(ctx, conf, &coin_type).await?;
     let max_eth_tx_type = get_max_eth_tx_type_conf(ctx, conf, &coin_type).await?;
+    let gas_limit = extract_gas_limit_from_conf(conf)
+        .map_to_mm(|e| EthActivationV2Error::InternalError(format!("invalid gas_limit config {}", e)))?;
 
     let coin = EthCoinImpl {
         priv_key_policy,
@@ -617,6 +625,7 @@ pub async fn eth_coin_from_conf_and_request_v2(
         erc20_tokens_infos: Default::default(),
         nfts_infos: Default::default(),
         platform_fee_estimator_state,
+        gas_limit,
         abortable_system,
     };
 
