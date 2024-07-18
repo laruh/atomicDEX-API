@@ -79,7 +79,7 @@ use instant::Instant;
 use keys::Public as HtlcPubKey;
 use mm2_core::mm_ctx::{MmArc, MmWeak};
 use mm2_event_stream::behaviour::{EventBehaviour, EventInitStatus};
-use mm2_net::transport::{GuiAuthValidation, GuiAuthValidationGenerator};
+use mm2_net::transport::{KomodefiProxyAuthValidation, ProxyAuthValidationGenerator};
 use mm2_number::bigdecimal_custom::CheckedDivision;
 use mm2_number::{BigDecimal, BigUint, MmNumber};
 #[cfg(test)] use mocktopus::macros::*;
@@ -172,6 +172,7 @@ const ERC721_ABI: &str = include_str!("eth/erc721_abi.json");
 /// https://github.com/ethereum/EIPs/blob/master/EIPS/eip-1155.md
 const ERC1155_ABI: &str = include_str!("eth/erc1155_abi.json");
 const NFT_SWAP_CONTRACT_ABI: &str = include_str!("eth/nft_swap_contract_abi.json");
+const NFT_MAKER_SWAP_V2_ABI: &str = include_str!("eth/nft_maker_swap_v2_abi.json");
 
 /// Payment states from etomic swap smart contract: https://github.com/artemii235/etomic-swap/blob/master/contracts/EtomicSwap.sol#L5
 pub enum PaymentState {
@@ -289,8 +290,8 @@ impl Default for EthGasLimit {
     }
 }
 
-/// Lifetime of generated signed message for gui-auth requests
-const GUI_AUTH_SIGNED_MESSAGE_LIFETIME_SEC: i64 = 90;
+/// Lifetime of generated signed message for proxy-auth requests
+const PROXY_AUTH_SIGNED_MESSAGE_LIFETIME_SEC: i64 = 90;
 
 /// Max transaction type according to EIP-2718
 const ETH_MAX_TX_TYPE: u64 = 0x7f;
@@ -301,6 +302,7 @@ lazy_static! {
     pub static ref ERC721_CONTRACT: Contract = Contract::load(ERC721_ABI.as_bytes()).unwrap();
     pub static ref ERC1155_CONTRACT: Contract = Contract::load(ERC1155_ABI.as_bytes()).unwrap();
     pub static ref NFT_SWAP_CONTRACT: Contract = Contract::load(NFT_SWAP_CONTRACT_ABI.as_bytes()).unwrap();
+    pub static ref NFT_MAKER_SWAP_V2: Contract = Contract::load(NFT_MAKER_SWAP_V2_ABI.as_bytes()).unwrap();
 }
 
 pub type EthDerivationMethod = DerivationMethod<Address, EthHDWallet>;
@@ -639,7 +641,7 @@ pub(crate) enum FeeEstimatorState {
 pub struct EthCoinImpl {
     ticker: String,
     pub coin_type: EthCoinType,
-    priv_key_policy: EthPrivKeyPolicy,
+    pub(crate) priv_key_policy: EthPrivKeyPolicy,
     /// Either an Iguana address or a 'EthHDWallet' instance.
     /// Arc is used to use the same hd wallet from platform coin if we need to.
     /// This allows the reuse of the same derived accounts/addresses of the
@@ -3593,7 +3595,7 @@ impl EthCoin {
 impl EthCoin {
     /// Sign and send eth transaction.
     /// This function is primarily for swap transactions so internally it relies on the swap tx fee policy
-    pub(crate) fn sign_and_send_transaction(&self, value: U256, action: Action, data: Vec<u8>, gas: U256) -> EthTxFut {
+    pub fn sign_and_send_transaction(&self, value: U256, action: Action, data: Vec<u8>, gas: U256) -> EthTxFut {
         let coin = self.clone();
         let fut = async move {
             match coin.priv_key_policy {
@@ -5776,14 +5778,15 @@ impl<T: TryToAddress> TryToAddress for Option<T> {
     }
 }
 
-pub trait GuiAuthMessages {
-    fn gui_auth_sign_message_hash(message: String) -> Option<[u8; 32]>;
-    fn generate_gui_auth_signed_validation(generator: GuiAuthValidationGenerator)
-        -> SignatureResult<GuiAuthValidation>;
+pub trait KomodoDefiAuthMessages {
+    fn proxy_auth_sign_message_hash(message: String) -> Option<[u8; 32]>;
+    fn generate_proxy_auth_signed_validation(
+        generator: ProxyAuthValidationGenerator,
+    ) -> SignatureResult<KomodefiProxyAuthValidation>;
 }
 
-impl GuiAuthMessages for EthCoin {
-    fn gui_auth_sign_message_hash(message: String) -> Option<[u8; 32]> {
+impl KomodoDefiAuthMessages for EthCoin {
+    fn proxy_auth_sign_message_hash(message: String) -> Option<[u8; 32]> {
         let message_prefix = "atomicDEX Auth Ethereum Signed Message:\n";
         let prefix_len = CompactInteger::from(message_prefix.len());
 
@@ -5796,16 +5799,16 @@ impl GuiAuthMessages for EthCoin {
         Some(keccak256(&stream.out()).take())
     }
 
-    fn generate_gui_auth_signed_validation(
-        generator: GuiAuthValidationGenerator,
-    ) -> SignatureResult<GuiAuthValidation> {
-        let timestamp_message = get_utc_timestamp() + GUI_AUTH_SIGNED_MESSAGE_LIFETIME_SEC;
+    fn generate_proxy_auth_signed_validation(
+        generator: ProxyAuthValidationGenerator,
+    ) -> SignatureResult<KomodefiProxyAuthValidation> {
+        let timestamp_message = get_utc_timestamp() + PROXY_AUTH_SIGNED_MESSAGE_LIFETIME_SEC;
 
-        let message_hash =
-            EthCoin::gui_auth_sign_message_hash(timestamp_message.to_string()).ok_or(SignatureError::PrefixNotFound)?;
+        let message_hash = EthCoin::proxy_auth_sign_message_hash(timestamp_message.to_string())
+            .ok_or(SignatureError::PrefixNotFound)?;
         let signature = sign(&generator.secret, &H256::from(message_hash))?;
 
-        Ok(GuiAuthValidation {
+        Ok(KomodefiProxyAuthValidation {
             coin_ticker: generator.coin_ticker,
             address: generator.address,
             timestamp_message,

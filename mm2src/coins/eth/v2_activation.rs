@@ -89,6 +89,7 @@ impl From<EthTokenActivationError> for EthActivationV2Error {
             EthTokenActivationError::UnexpectedDerivationMethod(err) => {
                 EthActivationV2Error::UnexpectedDerivationMethod(err)
             },
+            EthTokenActivationError::PrivKeyPolicyNotAllowed(e) => EthActivationV2Error::PrivKeyPolicyNotAllowed(e),
         }
     }
 }
@@ -204,6 +205,7 @@ pub enum EthTokenActivationError {
     InvalidPayload(String),
     Transport(String),
     UnexpectedDerivationMethod(UnexpectedDerivationMethod),
+    PrivKeyPolicyNotAllowed(PrivKeyPolicyNotAllowed),
 }
 
 impl From<AbortedError> for EthTokenActivationError {
@@ -254,6 +256,36 @@ impl From<String> for EthTokenActivationError {
     fn from(e: String) -> Self { EthTokenActivationError::InternalError(e) }
 }
 
+impl From<PrivKeyPolicyNotAllowed> for EthTokenActivationError {
+    fn from(e: PrivKeyPolicyNotAllowed) -> Self { EthTokenActivationError::PrivKeyPolicyNotAllowed(e) }
+}
+
+impl From<GenerateSignedMessageError> for EthTokenActivationError {
+    fn from(e: GenerateSignedMessageError) -> Self {
+        match e {
+            GenerateSignedMessageError::InternalError(e) => EthTokenActivationError::InternalError(e),
+            GenerateSignedMessageError::PrivKeyPolicyNotAllowed(e) => {
+                EthTokenActivationError::PrivKeyPolicyNotAllowed(e)
+            },
+        }
+    }
+}
+
+#[derive(Display, Serialize)]
+pub enum GenerateSignedMessageError {
+    #[display(fmt = "Internal: {}", _0)]
+    InternalError(String),
+    PrivKeyPolicyNotAllowed(PrivKeyPolicyNotAllowed),
+}
+
+impl From<PrivKeyPolicyNotAllowed> for GenerateSignedMessageError {
+    fn from(e: PrivKeyPolicyNotAllowed) -> Self { GenerateSignedMessageError::PrivKeyPolicyNotAllowed(e) }
+}
+
+impl From<SignatureError> for GenerateSignedMessageError {
+    fn from(e: SignatureError) -> Self { GenerateSignedMessageError::InternalError(e.to_string()) }
+}
+
 /// Represents the parameters required for activating either an ERC-20 token or an NFT on the Ethereum platform.
 #[derive(Clone, Deserialize)]
 #[serde(untagged)]
@@ -300,7 +332,11 @@ pub struct NftActivationRequest {
 #[derive(Clone, Deserialize)]
 #[serde(tag = "type", content = "info")]
 pub enum NftProviderEnum {
-    Moralis { url: Url },
+    Moralis {
+        url: Url,
+        #[serde(default)]
+        proxy_auth: bool,
+    },
 }
 
 /// Represents the protocol type for an Ethereum-based token, distinguishing between ERC-20 tokens and NFTs.
@@ -368,7 +404,7 @@ impl EthCoin {
             .iter()
             .map(|node| {
                 let mut transport = node.web3.transport().clone();
-                if let Some(auth) = transport.gui_auth_validation_generator_as_mut() {
+                if let Some(auth) = transport.proxy_auth_validation_generator_as_mut() {
                     auth.coin_ticker = ticker.clone();
                 }
                 let web3 = Web3::new(transport);
@@ -438,7 +474,11 @@ impl EthCoin {
     /// It fetches NFT details from a given URL to populate the `nfts_infos` field, which stores information about the user's NFTs.
     ///
     /// This setup allows the Global NFT to function like a coin, supporting swap operations and providing easy access to NFT details via `nfts_infos`.
-    pub async fn global_nft_from_platform_coin(&self, url: &Url) -> MmResult<EthCoin, EthTokenActivationError> {
+    pub async fn global_nft_from_platform_coin(
+        &self,
+        original_url: &Url,
+        proxy_auth: &bool,
+    ) -> MmResult<EthCoin, EthTokenActivationError> {
         let chain = Chain::from_ticker(self.ticker())?;
         let ticker = chain.to_nft_ticker().to_string();
 
@@ -454,7 +494,12 @@ impl EthCoin {
 
         // Todo: support HD wallet for NFTs, currently we get nfts for enabled address only and there might be some issues when activating NFTs while ETH is activated with HD wallet
         let my_address = self.derivation_method.single_addr_or_err().await?;
-        let nft_infos = get_nfts_for_activation(&chain, &my_address, url).await?;
+
+        let my_address_str = display_eth_address(&my_address);
+        let signed_message =
+            generate_signed_message(*proxy_auth, &chain, my_address_str, self.priv_key_policy()).await?;
+
+        let nft_infos = get_nfts_for_activation(&chain, &my_address, original_url, signed_message.as_ref()).await?;
         let coin_type = EthCoinType::Nft {
             platform: self.ticker.clone(),
         };
@@ -491,6 +536,28 @@ impl EthCoin {
         };
         Ok(EthCoin(Arc::new(global_nft)))
     }
+}
+
+pub(crate) async fn generate_signed_message(
+    proxy_auth: bool,
+    chain: &Chain,
+    my_address: String,
+    priv_key_policy: &EthPrivKeyPolicy,
+) -> MmResult<Option<KomodefiProxyAuthValidation>, GenerateSignedMessageError> {
+    if !proxy_auth {
+        return Ok(None);
+    }
+
+    let secret = priv_key_policy.activated_key_or_err()?.secret().clone();
+    let validation_generator = ProxyAuthValidationGenerator {
+        coin_ticker: chain.to_nft_ticker().to_string(),
+        secret,
+        address: my_address,
+    };
+
+    let signed_message = EthCoin::generate_proxy_auth_signed_validation(validation_generator)?;
+
+    Ok(Some(signed_message))
 }
 
 /// Activate eth coin from coin config and private key build policy,
@@ -776,7 +843,7 @@ async fn build_web3_instances(
                 let mut websocket_transport = WebsocketTransport::with_event_handlers(node, event_handlers.clone());
 
                 if eth_node.gui_auth {
-                    websocket_transport.gui_auth_validation_generator = Some(GuiAuthValidationGenerator {
+                    websocket_transport.proxy_auth_validation_generator = Some(ProxyAuthValidationGenerator {
                         coin_ticker: coin_ticker.clone(),
                         secret: key_pair.secret().clone(),
                         address: address.clone(),
@@ -852,7 +919,7 @@ fn build_http_transport(
     let mut http_transport = HttpTransport::with_event_handlers(node, event_handlers);
 
     if gui_auth {
-        http_transport.gui_auth_validation_generator = Some(GuiAuthValidationGenerator {
+        http_transport.proxy_auth_validation_generator = Some(ProxyAuthValidationGenerator {
             coin_ticker,
             secret: key_pair.secret().clone(),
             address,

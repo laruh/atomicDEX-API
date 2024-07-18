@@ -15,7 +15,7 @@ use structs::{ExpectedHtlcParams, PaymentType, ValidationParams};
 
 use super::ContractType;
 use crate::eth::{addr_from_raw_pubkey, decode_contract_call, EthCoin, EthCoinType, MakerPaymentStateV2, SignedEthTx,
-                 TryToAddress, ERC1155_CONTRACT, ERC721_CONTRACT, NFT_SWAP_CONTRACT};
+                 TryToAddress, ERC1155_CONTRACT, ERC721_CONTRACT, NFT_MAKER_SWAP_V2};
 use crate::{ParseCoinAssocTypes, RefundPaymentArgs, SendNftMakerPaymentArgs, SpendNftMakerPaymentArgs, TransactionErr,
             ValidateNftMakerPaymentArgs};
 
@@ -74,7 +74,7 @@ impl EthCoin {
             .payment_status_v2(
                 *etomic_swap_contract,
                 Token::FixedBytes(swap_id.clone()),
-                &NFT_SWAP_CONTRACT,
+                &NFT_MAKER_SWAP_V2,
                 PaymentType::MakerPayments,
             )
             .await?;
@@ -144,7 +144,7 @@ impl EthCoin {
         let (state, htlc_params) = try_tx_s!(
             self.status_and_htlc_params_from_tx_data(
                 *etomic_swap_contract,
-                &NFT_SWAP_CONTRACT,
+                &NFT_MAKER_SWAP_V2,
                 &decoded,
                 index_bytes,
                 PaymentType::MakerPayments,
@@ -269,8 +269,8 @@ impl EthCoin {
         state: U256,
     ) -> Result<Vec<u8>, PrepareTxDataError> {
         let spend_func = match args.contract_type {
-            ContractType::Erc1155 => NFT_SWAP_CONTRACT.function("spendErc1155MakerPayment")?,
-            ContractType::Erc721 => NFT_SWAP_CONTRACT.function("spendErc721MakerPayment")?,
+            ContractType::Erc1155 => NFT_MAKER_SWAP_V2.function("spendErc1155MakerPayment")?,
+            ContractType::Erc721 => NFT_MAKER_SWAP_V2.function("spendErc721MakerPayment")?,
         };
 
         if state != U256::from(MakerPaymentStateV2::PaymentSent as u8) {
