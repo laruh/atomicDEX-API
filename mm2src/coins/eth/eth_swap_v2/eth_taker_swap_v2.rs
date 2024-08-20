@@ -1,12 +1,13 @@
-use super::eth::{wei_from_big_decimal, EthCoin, EthCoinType, SignedEthTx, TAKER_SWAP_V2};
-use super::{decode_contract_call, get_function_input_data, ParseCoinAssocTypes, RefundFundingSecretArgs,
-            RefundTakerPaymentArgs, SendTakerFundingArgs, SwapTxTypeWithSecretHash, TakerPaymentStateV2, Transaction,
-            TransactionErr, ValidateSwapV2TxError, ValidateSwapV2TxResult, ValidateTakerFundingArgs};
+use super::{validate_from_to_and_status, validate_payment_state, EthPaymentType, PaymentStatusErr, PrepareTxDataError,
+            ZERO_VALUE};
+use crate::eth::{decode_contract_call, get_function_input_data, wei_from_big_decimal, EthCoin, EthCoinType,
+                 ParseCoinAssocTypes, RefundFundingSecretArgs, RefundTakerPaymentArgs, SendTakerFundingArgs,
+                 SignedEthTx, SwapTxTypeWithSecretHash, TakerPaymentStateV2, Transaction, TransactionErr,
+                 ValidateSwapV2TxError, ValidateSwapV2TxResult, ValidateTakerFundingArgs, TAKER_SWAP_V2};
 use crate::{FundingTxSpend, GenTakerFundingSpendArgs, GenTakerPaymentSpendArgs, SearchForFundingSpendErr,
             WaitForTakerPaymentSpendError};
 use common::executor::Timer;
 use common::now_sec;
-use enum_derives::EnumFromStringify;
 use ethabi::{Contract, Function, Token};
 use ethcore_transaction::Action;
 use ethereum_types::{Address, Public, U256};
@@ -15,13 +16,8 @@ use futures::compat::Future01CompatExt;
 use mm2_err_handle::prelude::{MapToMmResult, MmError, MmResult};
 use mm2_number::BigDecimal;
 use std::convert::TryInto;
-use web3::types::{Transaction as Web3Tx, TransactionId};
+use web3::types::TransactionId;
 
-/// ZERO_VALUE is used to represent a 0 amount in transactions where the value is encoded in the transaction input data.
-/// This is typically used in function calls where the value is not directly transferred with the transaction, such as in
-/// `spendTakerPayment` where the [amount](https://github.com/KomodoPlatform/etomic-swap/blob/5e15641cbf41766cd5b37b4d71842c270773f788/contracts/EtomicSwapTakerV2.sol#L166)
-/// is provided as part of the input data rather than as an Ether value
-pub(crate) const ZERO_VALUE: u32 = 0;
 const ETH_TAKER_PAYMENT: &str = "ethTakerPayment";
 const ERC20_TAKER_PAYMENT: &str = "erc20TakerPayment";
 const TAKER_PAYMENT_APPROVE: &str = "takerPaymentApprove";
@@ -726,15 +722,6 @@ impl EthCoin {
     }
 }
 
-#[derive(Debug, Display, EnumFromStringify)]
-pub(crate) enum PrepareTxDataError {
-    #[from_stringify("ethabi::Error")]
-    #[display(fmt = "ABI error: {}", _0)]
-    ABIError(String),
-    #[display(fmt = "Internal error: {}", _0)]
-    Internal(String),
-}
-
 // TODO validate premium when add its support in swap_v2
 fn validate_payment_args<'a>(
     taker_secret_hash: &'a [u8],
@@ -756,35 +743,6 @@ fn validate_payment_args<'a>(
 /// function to check if BigDecimal is a positive value
 #[inline(always)]
 fn is_positive(amount: &BigDecimal) -> bool { amount > &BigDecimal::from(0) }
-
-pub(crate) fn validate_from_to_and_status(
-    tx_from_rpc: &Web3Tx,
-    expected_from: Address,
-    expected_to: Address,
-    status: U256,
-    expected_status: u8,
-) -> Result<(), MmError<ValidatePaymentV2Err>> {
-    if status != U256::from(expected_status) {
-        return MmError::err(ValidatePaymentV2Err::UnexpectedPaymentState(format!(
-            "Payment state is not `PaymentSent`, got {}",
-            status
-        )));
-    }
-    if tx_from_rpc.from != Some(expected_from) {
-        return MmError::err(ValidatePaymentV2Err::WrongPaymentTx(format!(
-            "Payment tx {:?} was sent from wrong address, expected {:?}",
-            tx_from_rpc, expected_from
-        )));
-    }
-    // (in NFT case) as NFT owner calls "safeTransferFrom" directly, then in Transaction 'to' field we expect token_address
-    if tx_from_rpc.to != Some(expected_to) {
-        return MmError::err(ValidatePaymentV2Err::WrongPaymentTx(format!(
-            "Payment tx {:?} was sent to wrong address, expected {:?}",
-            tx_from_rpc, expected_to,
-        )));
-    }
-    Ok(())
-}
 
 struct TakerValidationArgs<'a> {
     swap_id: Vec<u8>,
@@ -868,54 +826,6 @@ fn validate_erc20_taker_payment_data(
         }
     }
     Ok(())
-}
-
-pub(crate) fn validate_payment_state(
-    tx: &SignedEthTx,
-    state: U256,
-    expected_state: u8,
-) -> Result<(), PrepareTxDataError> {
-    if state != U256::from(expected_state) {
-        return Err(PrepareTxDataError::Internal(format!(
-            "Payment {:?} state is not `{}`, got `{}`",
-            tx, expected_state, state
-        )));
-    }
-    Ok(())
-}
-
-#[derive(Debug, Display)]
-pub(crate) enum ValidatePaymentV2Err {
-    UnexpectedPaymentState(String),
-    WrongPaymentTx(String),
-}
-
-pub(crate) enum EthPaymentType {
-    MakerPayments,
-    TakerPayments,
-}
-
-impl EthPaymentType {
-    pub(crate) fn as_str(&self) -> &'static str {
-        match self {
-            EthPaymentType::MakerPayments => "makerPayments",
-            EthPaymentType::TakerPayments => "takerPayments",
-        }
-    }
-}
-
-#[derive(Debug, Display, EnumFromStringify)]
-pub(crate) enum PaymentStatusErr {
-    #[from_stringify("ethabi::Error")]
-    #[display(fmt = "ABI error: {}", _0)]
-    ABIError(String),
-    #[from_stringify("web3::Error")]
-    #[display(fmt = "Transport error: {}", _0)]
-    Transport(String),
-    #[display(fmt = "Internal error: {}", _0)]
-    Internal(String),
-    #[display(fmt = "Invalid data error: {}", _0)]
-    InvalidData(String),
 }
 
 fn check_decoded_length(decoded: &Vec<Token>, expected_len: usize) -> Result<(), PrepareTxDataError> {

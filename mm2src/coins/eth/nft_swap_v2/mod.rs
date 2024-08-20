@@ -9,13 +9,13 @@ use mm2_number::BigDecimal;
 use web3::types::TransactionId;
 
 pub(crate) mod errors;
-use errors::{Erc721FunctionError, HtlcParamsError, PrepareTxDataError};
+use errors::{Erc721FunctionError, HtlcParamsError};
 mod structs;
 use structs::{ExpectedHtlcParams, ValidationParams};
 
 use super::ContractType;
 use crate::eth::eth_swap_v2::{validate_from_to_and_status, validate_payment_state, EthPaymentType, PaymentStatusErr,
-                              ZERO_VALUE};
+                              PrepareTxDataError, ZERO_VALUE};
 use crate::eth::{decode_contract_call, EthCoin, EthCoinType, MakerPaymentStateV2, SignedEthTx, ERC1155_CONTRACT,
                  ERC721_CONTRACT, NFT_MAKER_SWAP_V2};
 use crate::{ParseCoinAssocTypes, RefundNftMakerPaymentArgs, SendNftMakerPaymentArgs, SpendNftMakerPaymentArgs,
