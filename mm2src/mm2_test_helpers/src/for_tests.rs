@@ -81,7 +81,7 @@ pub const MAKER_ERROR_EVENTS: [&str; 15] = [
     "MakerPaymentRefundFinished",
 ];
 
-pub const TAKER_SUCCESS_EVENTS: [&str; 11] = [
+pub const TAKER_SUCCESS_EVENTS: [&str; 12] = [
     "Started",
     "Negotiated",
     "TakerFeeSent",
@@ -92,6 +92,7 @@ pub const TAKER_SUCCESS_EVENTS: [&str; 11] = [
     "TakerPaymentSent",
     "TakerPaymentSpent",
     "MakerPaymentSpent",
+    "MakerPaymentSpendConfirmed",
     "Finished",
 ];
 
@@ -143,7 +144,7 @@ pub const TAKER_ACTUAL_EVENTS_TAKER_SPENDS_MAKER_PAYMENT: [&str; 12] = [
     "Finished",
 ];
 
-pub const TAKER_ERROR_EVENTS: [&str; 16] = [
+pub const TAKER_ERROR_EVENTS: [&str; 17] = [
     "StartFailed",
     "NegotiateFailed",
     "TakerFeeSendFailed",
@@ -154,6 +155,7 @@ pub const TAKER_ERROR_EVENTS: [&str; 16] = [
     "TakerPaymentDataSendFailed",
     "TakerPaymentWaitForSpendFailed",
     "MakerPaymentSpendFailed",
+    "MakerPaymentSpendConfirmFailed",
     "TakerPaymentWaitRefundStarted",
     "TakerPaymentRefundStarted",
     "TakerPaymentRefunded",
