@@ -4,6 +4,7 @@ use ethereum_types::{Address, U256};
 use mm2_err_handle::mm_error::MmError;
 use web3::types::Transaction as Web3Tx;
 
+pub(crate) mod eth_maker_swap_v2;
 pub(crate) mod eth_taker_swap_v2;
 
 /// ZERO_VALUE is used to represent a 0 amount in transactions where the value is encoded in the transaction input data.

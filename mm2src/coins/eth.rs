@@ -7218,3 +7218,32 @@ impl EthCoin {
         EthCoin(Arc::new(coin))
     }
 }
+
+#[async_trait]
+impl MakerCoinSwapOpsV2 for EthCoin {
+    async fn send_maker_payment_v2(&self, args: SendMakerPaymentArgs<'_, Self>) -> Result<Self::Tx, TransactionErr> {
+        self.send_maker_payment_v2_impl(args).await
+    }
+
+    async fn validate_maker_payment_v2(&self, args: ValidateMakerPaymentArgs<'_, Self>) -> ValidatePaymentResult<()> {
+        self.validate_maker_payment_v2_impl(args).await
+    }
+
+    async fn refund_maker_payment_v2_timelock(
+        &self,
+        args: RefundMakerPaymentTimelockArgs<'_>,
+    ) -> Result<Self::Tx, TransactionErr> {
+        self.refund_maker_payment_v2_timelock_impl(args).await
+    }
+
+    async fn refund_maker_payment_v2_secret(
+        &self,
+        args: RefundMakerPaymentSecretArgs<'_, Self>,
+    ) -> Result<Self::Tx, TransactionErr> {
+        self.refund_maker_payment_v2_secret_impl(args).await
+    }
+
+    async fn spend_maker_payment_v2(&self, args: SpendMakerPaymentArgs<'_, Self>) -> Result<Self::Tx, TransactionErr> {
+        self.spend_maker_payment_v2_impl(args).await
+    }
+}
