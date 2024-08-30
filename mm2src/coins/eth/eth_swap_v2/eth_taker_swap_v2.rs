@@ -1,5 +1,5 @@
-use super::{validate_from_to_and_status, validate_payment_args, validate_payment_state, EthPaymentType,
-            PrepareTxDataError, ZERO_VALUE};
+use super::{check_decoded_length, validate_from_to_and_status, validate_payment_args, validate_payment_state,
+            EthPaymentType, PrepareTxDataError, ZERO_VALUE};
 use crate::eth::{decode_contract_call, get_function_input_data, wei_from_big_decimal, EthCoin, EthCoinType,
                  ParseCoinAssocTypes, RefundFundingSecretArgs, RefundTakerPaymentArgs, SendTakerFundingArgs,
                  SignedEthTx, SwapTxTypeWithSecretHash, TakerPaymentStateV2, Transaction, TransactionErr,
@@ -769,17 +769,6 @@ fn validate_erc20_taker_payment_data(
                 expected_token
             )));
         }
-    }
-    Ok(())
-}
-
-fn check_decoded_length(decoded: &Vec<Token>, expected_len: usize) -> Result<(), PrepareTxDataError> {
-    if decoded.len() != expected_len {
-        return Err(PrepareTxDataError::Internal(format!(
-            "Invalid number of tokens in decoded. Expected {}, found {}",
-            expected_len,
-            decoded.len()
-        )));
     }
     Ok(())
 }

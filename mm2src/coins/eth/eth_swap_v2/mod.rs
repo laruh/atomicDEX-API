@@ -142,7 +142,7 @@ pub(crate) fn validate_from_to_and_status(
 fn is_positive(amount: &BigDecimal) -> bool { amount > &BigDecimal::from(0) }
 
 // TODO validate premium when add its support in swap_v2
-pub(crate) fn validate_payment_args<'a>(
+fn validate_payment_args<'a>(
     taker_secret_hash: &'a [u8],
     maker_secret_hash: &'a [u8],
     trading_amount: &BigDecimal,
@@ -155,6 +155,17 @@ pub(crate) fn validate_payment_args<'a>(
     }
     if maker_secret_hash.len() != 32 {
         return Err("maker_secret_hash must be 32 bytes".to_string());
+    }
+    Ok(())
+}
+
+fn check_decoded_length(decoded: &Vec<Token>, expected_len: usize) -> Result<(), PrepareTxDataError> {
+    if decoded.len() != expected_len {
+        return Err(PrepareTxDataError::Internal(format!(
+            "Invalid number of tokens in decoded. Expected {}, found {}",
+            expected_len,
+            decoded.len()
+        )));
     }
     Ok(())
 }
