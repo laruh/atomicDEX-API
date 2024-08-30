@@ -1,9 +1,10 @@
-use super::{validate_payment_args, EthPaymentType, PrepareTxDataError, ZERO_VALUE};
+use super::{validate_from_to_and_status, validate_payment_args, EthPaymentType, PrepareTxDataError, ZERO_VALUE};
 use crate::coin_errors::{ValidatePaymentError, ValidatePaymentResult};
-use crate::eth::{wei_from_big_decimal, EthCoin, EthCoinType, SignedEthTx, MAKER_SWAP_V2};
-use crate::{RefundMakerPaymentSecretArgs, RefundMakerPaymentTimelockArgs, SendMakerPaymentArgs, SpendMakerPaymentArgs,
-            Transaction, TransactionErr, ValidateMakerPaymentArgs};
-use ethabi::Token;
+use crate::eth::{decode_contract_call, get_function_input_data, wei_from_big_decimal, EthCoin, EthCoinType,
+                 MakerPaymentStateV2, SignedEthTx, MAKER_SWAP_V2};
+use crate::{ParseCoinAssocTypes, RefundMakerPaymentSecretArgs, RefundMakerPaymentTimelockArgs, SendMakerPaymentArgs,
+            SpendMakerPaymentArgs, Transaction, TransactionErr, ValidateMakerPaymentArgs};
+use ethabi::{Function, Token};
 use ethcore_transaction::Action;
 use ethereum_types::{Address, U256};
 use ethkey::public_to_address;
@@ -23,7 +24,6 @@ struct MakerPaymentArgs {
     payment_time_lock: u64,
 }
 
-#[allow(dead_code)]
 struct MakerValidationArgs<'a> {
     swap_id: Vec<u8>,
     amount: U256,
@@ -126,9 +126,9 @@ impl EthCoin {
             })?;
         validate_payment_args(args.taker_secret_hash, args.maker_secret_hash, &args.amount)
             .map_to_mm(ValidatePaymentError::InternalError)?;
-        let _maker_address = public_to_address(args.maker_pub);
+        let maker_address = public_to_address(args.maker_pub);
         let swap_id = self.etomic_swap_id_v2(args.time_lock, args.maker_secret_hash);
-        let _maker_status = self
+        let maker_status = self
             .payment_status_v2(
                 maker_swap_v2_contract,
                 Token::FixedBytes(swap_id.clone()),
@@ -141,13 +141,45 @@ impl EthCoin {
         let tx_from_rpc = self
             .transaction(TransactionId::Hash(args.maker_payment_tx.tx_hash()))
             .await?;
-        let _tx_from_rpc = tx_from_rpc.as_ref().ok_or_else(|| {
+        let tx_from_rpc = tx_from_rpc.as_ref().ok_or_else(|| {
             ValidatePaymentError::TxDoesNotExist(format!(
                 "Didn't find provided tx {:?} on ETH node",
                 args.maker_payment_tx.tx_hash()
             ))
         })?;
-        todo!()
+        validate_from_to_and_status(
+            tx_from_rpc,
+            maker_address,
+            maker_swap_v2_contract,
+            maker_status,
+            MakerPaymentStateV2::PaymentSent as u8,
+        )?;
+
+        let validation_args = {
+            let amount = wei_from_big_decimal(&args.amount, self.decimals)?;
+            MakerValidationArgs {
+                swap_id,
+                amount,
+                taker: self.my_addr().await,
+                taker_secret_hash: args.taker_secret_hash,
+                maker_secret_hash: args.maker_secret_hash,
+                payment_time_lock: args.time_lock,
+            }
+        };
+        match self.coin_type {
+            EthCoinType::Eth => {
+                let function = MAKER_SWAP_V2.function(ETH_MAKER_PAYMENT)?;
+                let decoded = decode_contract_call(function, &tx_from_rpc.input.0)?;
+                validate_eth_maker_payment_data(&decoded, &validation_args, function, tx_from_rpc.value)?;
+            },
+            EthCoinType::Erc20 { token_addr, .. } => {
+                let function = MAKER_SWAP_V2.function(ERC20_MAKER_PAYMENT)?;
+                let decoded = decode_contract_call(function, &tx_from_rpc.input.0)?;
+                validate_erc20_maker_payment_data(&decoded, &validation_args, function, token_addr)?;
+            },
+            EthCoinType::Nft { .. } => unreachable!(),
+        }
+        Ok(())
     }
 
     pub(crate) async fn refund_maker_payment_v2_timelock_impl(
@@ -205,4 +237,70 @@ impl EthCoin {
         ])?;
         Ok(data)
     }
+}
+
+/// Validation function for ETH maker payment data
+fn validate_eth_maker_payment_data(
+    decoded: &[Token],
+    args: &MakerValidationArgs,
+    func: &Function,
+    tx_value: U256,
+) -> Result<(), MmError<ValidatePaymentError>> {
+    let checks = vec![
+        (0, Token::FixedBytes(args.swap_id.clone()), "id"),
+        (2, Token::Address(args.taker), "taker"),
+        (3, Token::FixedBytes(args.taker_secret_hash.to_vec()), "takerSecretHash"),
+        (4, Token::FixedBytes(args.maker_secret_hash.to_vec()), "makerSecretHash"),
+        (5, Token::Uint(U256::from(args.payment_time_lock)), "paymentLockTime"),
+    ];
+
+    for (index, expected_token, field_name) in checks {
+        let token = get_function_input_data(decoded, func, index).map_to_mm(ValidatePaymentError::InternalError)?;
+        if token != expected_token {
+            return MmError::err(ValidatePaymentError::WrongPaymentTx(format!(
+                "ETH Maker Payment `{}` {:?} is invalid, expected {:?}",
+                field_name,
+                decoded.get(index),
+                expected_token
+            )));
+        }
+    }
+    if args.amount != tx_value {
+        return MmError::err(ValidatePaymentError::WrongPaymentTx(format!(
+            "ETH Maker Payment amount, is invalid, expected {:?}, got {:?}",
+            args.amount, tx_value
+        )));
+    }
+    Ok(())
+}
+
+/// Validation function for ERC20 maker payment data
+fn validate_erc20_maker_payment_data(
+    decoded: &[Token],
+    args: &MakerValidationArgs,
+    func: &Function,
+    token_addr: Address,
+) -> Result<(), MmError<ValidatePaymentError>> {
+    let checks = vec![
+        (0, Token::FixedBytes(args.swap_id.clone()), "id"),
+        (1, Token::Uint(args.amount), "amount"),
+        (3, Token::Address(token_addr), "tokenAddress"),
+        (4, Token::Address(args.taker), "taker"),
+        (5, Token::FixedBytes(args.taker_secret_hash.to_vec()), "takerSecretHash"),
+        (6, Token::FixedBytes(args.maker_secret_hash.to_vec()), "makerSecretHash"),
+        (7, Token::Uint(U256::from(args.payment_time_lock)), "paymentLockTime"),
+    ];
+
+    for (index, expected_token, field_name) in checks {
+        let token = get_function_input_data(decoded, func, index).map_to_mm(ValidatePaymentError::InternalError)?;
+        if token != expected_token {
+            return MmError::err(ValidatePaymentError::WrongPaymentTx(format!(
+                "ERC20 Maker Payment `{}` {:?} is invalid, expected {:?}",
+                field_name,
+                decoded.get(index),
+                expected_token
+            )));
+        }
+    }
+    Ok(())
 }

@@ -24,7 +24,8 @@ pub enum ValidatePaymentError {
         "NumConversError",
         "UnexpectedDerivationMethod",
         "keys::Error",
-        "PrepareTxDataError"
+        "PrepareTxDataError",
+        "ethabi::Error"
     )]
     InternalError(String),
     /// Problem with deserializing the transaction, or one of the transaction parts is invalid.
