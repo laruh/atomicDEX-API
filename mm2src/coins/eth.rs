@@ -1759,7 +1759,11 @@ impl WatcherOps for EthCoin {
                         )));
                     }
                 },
-                EthCoinType::Nft { .. } => return MmError::err(ValidatePaymentError::NftProtocolNotSupported),
+                EthCoinType::Nft { .. } => {
+                    return MmError::err(ValidatePaymentError::ProtocolNotSupported(
+                        "Nft protocol is not supported by watchers yet".to_string(),
+                    ))
+                },
             }
 
             Ok(())
@@ -2000,7 +2004,11 @@ impl WatcherOps for EthCoin {
                         )));
                     }
                 },
-                EthCoinType::Nft { .. } => return MmError::err(ValidatePaymentError::NftProtocolNotSupported),
+                EthCoinType::Nft { .. } => {
+                    return MmError::err(ValidatePaymentError::ProtocolNotSupported(
+                        "Nft protocol is not supported by watchers yet".to_string(),
+                    ))
+                },
             }
 
             Ok(())
@@ -4612,7 +4620,7 @@ impl EthCoin {
                 EthCoinType::Erc20 { token_addr, .. } => token_addr,
                 EthCoinType::Nft { .. } => {
                     return Err(TransactionErr::ProtocolNotSupported(ERRL!(
-                        "Nft Protocol is not supported yet!"
+                        "Nft Protocol is not supported by 'approve'!"
                     )))
                 },
             };
@@ -4952,7 +4960,11 @@ impl EthCoin {
                         )));
                     }
                 },
-                EthCoinType::Nft { .. } => return MmError::err(ValidatePaymentError::NftProtocolNotSupported),
+                EthCoinType::Nft { .. } => {
+                    return MmError::err(ValidatePaymentError::ProtocolNotSupported(
+                        "Nft protocol is not supported by legacy swap".to_string(),
+                    ))
+                },
             }
 
             Ok(())
@@ -5890,7 +5902,11 @@ fn validate_fee_impl(coin: EthCoin, validate_fee_args: EthValidateFeeArgs<'_>) -
                     },
                 }
             },
-            EthCoinType::Nft { .. } => return MmError::err(ValidatePaymentError::NftProtocolNotSupported),
+            EthCoinType::Nft { .. } => {
+                return MmError::err(ValidatePaymentError::ProtocolNotSupported(
+                    "Nft protocol is not supported".to_string(),
+                ))
+            },
         }
 
         Ok(())

@@ -1,5 +1,5 @@
-use super::{validate_from_to_and_status, validate_payment_state, EthPaymentType, PaymentStatusErr, PrepareTxDataError,
-            ZERO_VALUE};
+use super::{validate_from_to_and_status, validate_payment_args, validate_payment_state, EthPaymentType,
+            PrepareTxDataError, ZERO_VALUE};
 use crate::eth::{decode_contract_call, get_function_input_data, wei_from_big_decimal, EthCoin, EthCoinType,
                  ParseCoinAssocTypes, RefundFundingSecretArgs, RefundTakerPaymentArgs, SendTakerFundingArgs,
                  SignedEthTx, SwapTxTypeWithSecretHash, TakerPaymentStateV2, Transaction, TransactionErr,
@@ -8,13 +8,12 @@ use crate::{FundingTxSpend, GenTakerFundingSpendArgs, GenTakerPaymentSpendArgs, 
             WaitForTakerPaymentSpendError};
 use common::executor::Timer;
 use common::now_sec;
-use ethabi::{Contract, Function, Token};
+use ethabi::{Function, Token};
 use ethcore_transaction::Action;
 use ethereum_types::{Address, Public, U256};
 use ethkey::public_to_address;
 use futures::compat::Future01CompatExt;
 use mm2_err_handle::prelude::{MapToMmResult, MmError, MmResult};
-use mm2_number::BigDecimal;
 use std::convert::TryInto;
 use web3::types::TransactionId;
 
@@ -636,38 +635,6 @@ impl EthCoin {
         Ok(data)
     }
 
-    /// Retrieves the payment status from a given smart contract address based on the swap ID and state type.
-    pub(crate) async fn payment_status_v2(
-        &self,
-        swap_address: Address,
-        swap_id: Token,
-        contract_abi: &Contract,
-        payment_type: EthPaymentType,
-        state_index: usize,
-    ) -> Result<U256, PaymentStatusErr> {
-        let function_name = payment_type.as_str();
-        let function = contract_abi.function(function_name)?;
-        let data = function.encode_input(&[swap_id])?;
-        let bytes = self
-            .call_request(self.my_addr().await, swap_address, None, Some(data.into()))
-            .await?;
-        let decoded_tokens = function.decode_output(&bytes.0)?;
-
-        let state = decoded_tokens.get(state_index).ok_or_else(|| {
-            PaymentStatusErr::Internal(format!(
-                "Payment status must contain 'state' as the {} token",
-                state_index
-            ))
-        })?;
-        match state {
-            Token::Uint(state) => Ok(*state),
-            _ => Err(PaymentStatusErr::InvalidData(format!(
-                "Payment status must be Uint, got {:?}",
-                state
-            ))),
-        }
-    }
-
     /// Retrieves the taker smart contract address, the corresponding function, and the token address.
     ///
     /// Depending on the coin type (ETH or ERC20), it fetches the appropriate function name  and token address.
@@ -721,28 +688,6 @@ impl EthCoin {
         Ok((decoded, taker_swap_v2_contract))
     }
 }
-
-// TODO validate premium when add its support in swap_v2
-fn validate_payment_args<'a>(
-    taker_secret_hash: &'a [u8],
-    maker_secret_hash: &'a [u8],
-    trading_amount: &BigDecimal,
-) -> Result<(), String> {
-    if !is_positive(trading_amount) {
-        return Err("trading_amount must be a positive value".to_string());
-    }
-    if taker_secret_hash.len() != 32 {
-        return Err("taker_secret_hash must be 32 bytes".to_string());
-    }
-    if maker_secret_hash.len() != 32 {
-        return Err("maker_secret_hash must be 32 bytes".to_string());
-    }
-    Ok(())
-}
-
-/// function to check if BigDecimal is a positive value
-#[inline(always)]
-fn is_positive(amount: &BigDecimal) -> bool { amount > &BigDecimal::from(0) }
 
 struct TakerValidationArgs<'a> {
     swap_id: Vec<u8>,

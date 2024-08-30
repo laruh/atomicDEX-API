@@ -49,8 +49,7 @@ pub enum ValidatePaymentError {
     WatcherRewardError(String),
     /// Input payment timelock overflows the type used by specific coin.
     TimelockOverflow(TryFromIntError),
-    #[display(fmt = "Nft Protocol is not supported yet!")]
-    NftProtocolNotSupported,
+    ProtocolNotSupported(String),
     InvalidData(String),
 }
 
@@ -77,7 +76,9 @@ impl From<Web3RpcError> for ValidatePaymentError {
             | Web3RpcError::Timeout(internal)
             | Web3RpcError::NumConversError(internal)
             | Web3RpcError::InvalidGasApiConfig(internal) => ValidatePaymentError::InternalError(internal),
-            Web3RpcError::NftProtocolNotSupported => ValidatePaymentError::NftProtocolNotSupported,
+            Web3RpcError::NftProtocolNotSupported => {
+                ValidatePaymentError::ProtocolNotSupported("Nft protocol is not supported".to_string())
+            },
         }
     }
 }

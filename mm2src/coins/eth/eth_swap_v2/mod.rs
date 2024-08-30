@@ -1,7 +1,11 @@
+use crate::eth::EthCoin;
+use crate::ParseCoinAssocTypes;
 use enum_derives::EnumFromStringify;
+use ethabi::{Contract, Token};
 use ethcore_transaction::SignedTransaction as SignedEthTx;
 use ethereum_types::{Address, U256};
 use mm2_err_handle::mm_error::MmError;
+use mm2_number::BigDecimal;
 use web3::types::Transaction as Web3Tx;
 
 pub(crate) mod eth_maker_swap_v2;
@@ -56,6 +60,40 @@ pub(crate) enum PrepareTxDataError {
     Internal(String),
 }
 
+impl EthCoin {
+    /// Retrieves the payment status from a given smart contract address based on the swap ID and state type.
+    pub(crate) async fn payment_status_v2(
+        &self,
+        swap_address: Address,
+        swap_id: Token,
+        contract_abi: &Contract,
+        payment_type: EthPaymentType,
+        state_index: usize,
+    ) -> Result<U256, PaymentStatusErr> {
+        let function_name = payment_type.as_str();
+        let function = contract_abi.function(function_name)?;
+        let data = function.encode_input(&[swap_id])?;
+        let bytes = self
+            .call_request(self.my_addr().await, swap_address, None, Some(data.into()))
+            .await?;
+        let decoded_tokens = function.decode_output(&bytes.0)?;
+
+        let state = decoded_tokens.get(state_index).ok_or_else(|| {
+            PaymentStatusErr::Internal(format!(
+                "Payment status must contain 'state' as the {} token",
+                state_index
+            ))
+        })?;
+        match state {
+            Token::Uint(state) => Ok(*state),
+            _ => Err(PaymentStatusErr::InvalidData(format!(
+                "Payment status must be Uint, got {:?}",
+                state
+            ))),
+        }
+    }
+}
+
 pub(crate) fn validate_payment_state(
     tx: &SignedEthTx,
     state: U256,
@@ -95,6 +133,28 @@ pub(crate) fn validate_from_to_and_status(
             "Payment tx {:?} was sent to wrong address, expected {:?}",
             tx_from_rpc, expected_to,
         )));
+    }
+    Ok(())
+}
+
+/// function to check if BigDecimal is a positive value
+#[inline(always)]
+fn is_positive(amount: &BigDecimal) -> bool { amount > &BigDecimal::from(0) }
+
+// TODO validate premium when add its support in swap_v2
+pub(crate) fn validate_payment_args<'a>(
+    taker_secret_hash: &'a [u8],
+    maker_secret_hash: &'a [u8],
+    trading_amount: &BigDecimal,
+) -> Result<(), String> {
+    if !is_positive(trading_amount) {
+        return Err("trading_amount must be a positive value".to_string());
+    }
+    if taker_secret_hash.len() != 32 {
+        return Err("taker_secret_hash must be 32 bytes".to_string());
+    }
+    if maker_secret_hash.len() != 32 {
+        return Err("maker_secret_hash must be 32 bytes".to_string());
     }
     Ok(())
 }

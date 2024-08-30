@@ -1,6 +1,6 @@
-use crate::coin_errors::ValidatePaymentResult;
-use crate::eth::eth_swap_v2::{PrepareTxDataError, ZERO_VALUE};
-use crate::eth::{wei_from_big_decimal, EthCoin, EthCoinType, SignedEthTx, TAKER_SWAP_V2};
+use super::{validate_payment_args, EthPaymentType, PrepareTxDataError, ZERO_VALUE};
+use crate::coin_errors::{ValidatePaymentError, ValidatePaymentResult};
+use crate::eth::{wei_from_big_decimal, EthCoin, EthCoinType, SignedEthTx, MAKER_SWAP_V2};
 use crate::{RefundMakerPaymentSecretArgs, RefundMakerPaymentTimelockArgs, SendMakerPaymentArgs, SpendMakerPaymentArgs,
             Transaction, TransactionErr, ValidateMakerPaymentArgs};
 use ethabi::Token;
@@ -8,7 +8,10 @@ use ethcore_transaction::Action;
 use ethereum_types::{Address, U256};
 use ethkey::public_to_address;
 use futures::compat::Future01CompatExt;
+use mm2_err_handle::mm_error::MmError;
+use mm2_err_handle::prelude::MapToMmResult;
 use std::convert::TryInto;
+use web3::types::TransactionId;
 
 const ETH_MAKER_PAYMENT: &str = "ethMakerPayment";
 const ERC20_MAKER_PAYMENT: &str = "erc20MakerPayment";
@@ -17,6 +20,16 @@ struct MakerPaymentArgs {
     taker_address: Address,
     taker_secret_hash: [u8; 32],
     maker_secret_hash: [u8; 32],
+    payment_time_lock: u64,
+}
+
+#[allow(dead_code)]
+struct MakerValidationArgs<'a> {
+    swap_id: Vec<u8>,
+    amount: U256,
+    taker: Address,
+    taker_secret_hash: &'a [u8],
+    maker_secret_hash: &'a [u8],
     payment_time_lock: u64,
 }
 
@@ -97,8 +110,43 @@ impl EthCoin {
 
     pub(crate) async fn validate_maker_payment_v2_impl(
         &self,
-        _args: ValidateMakerPaymentArgs<'_, Self>,
+        args: ValidateMakerPaymentArgs<'_, Self>,
     ) -> ValidatePaymentResult<()> {
+        if let EthCoinType::Nft { .. } = self.coin_type {
+            return MmError::err(ValidatePaymentError::ProtocolNotSupported(
+                "NFT protocol is not supported for ETH and ERC20 Swaps".to_string(),
+            ));
+        }
+        let maker_swap_v2_contract = self
+            .swap_v2_contracts
+            .as_ref()
+            .map(|contracts| contracts.maker_swap_v2_contract)
+            .ok_or_else(|| {
+                ValidatePaymentError::InternalError("Expected swap_v2_contracts to be Some, but found None".to_string())
+            })?;
+        validate_payment_args(args.taker_secret_hash, args.maker_secret_hash, &args.amount)
+            .map_to_mm(ValidatePaymentError::InternalError)?;
+        let _maker_address = public_to_address(args.maker_pub);
+        let swap_id = self.etomic_swap_id_v2(args.time_lock, args.maker_secret_hash);
+        let _maker_status = self
+            .payment_status_v2(
+                maker_swap_v2_contract,
+                Token::FixedBytes(swap_id.clone()),
+                &MAKER_SWAP_V2,
+                EthPaymentType::MakerPayments,
+                2,
+            )
+            .await?;
+
+        let tx_from_rpc = self
+            .transaction(TransactionId::Hash(args.maker_payment_tx.tx_hash()))
+            .await?;
+        let _tx_from_rpc = tx_from_rpc.as_ref().ok_or_else(|| {
+            ValidatePaymentError::TxDoesNotExist(format!(
+                "Didn't find provided tx {:?} on ETH node",
+                args.maker_payment_tx.tx_hash()
+            ))
+        })?;
         todo!()
     }
 
@@ -125,7 +173,7 @@ impl EthCoin {
 
     /// Prepares data for EtomicSwapMakerV2 contract [ethMakerPayment](https://github.com/KomodoPlatform/etomic-swap/blob/5e15641cbf41766cd5b37b4d71842c270773f788/contracts/EtomicSwapMakerV2.sol#L30) method
     async fn prepare_maker_eth_payment_data(&self, args: &MakerPaymentArgs) -> Result<Vec<u8>, PrepareTxDataError> {
-        let function = TAKER_SWAP_V2.function(ETH_MAKER_PAYMENT)?;
+        let function = MAKER_SWAP_V2.function(ETH_MAKER_PAYMENT)?;
         let id = self.etomic_swap_id_v2(args.payment_time_lock, &args.maker_secret_hash);
         let data = function.encode_input(&[
             Token::FixedBytes(id),
@@ -144,7 +192,7 @@ impl EthCoin {
         payment_amount: U256,
         token_address: Address,
     ) -> Result<Vec<u8>, PrepareTxDataError> {
-        let function = TAKER_SWAP_V2.function(ERC20_MAKER_PAYMENT)?;
+        let function = MAKER_SWAP_V2.function(ERC20_MAKER_PAYMENT)?;
         let id = self.etomic_swap_id_v2(args.payment_time_lock, &args.maker_secret_hash);
         let data = function.encode_input(&[
             Token::FixedBytes(id),
