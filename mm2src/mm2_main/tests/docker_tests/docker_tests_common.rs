@@ -105,6 +105,10 @@ pub const UTXO_ASSET_DOCKER_IMAGE: &str = "docker.io/artempikulin/testblockchain
 pub const UTXO_ASSET_DOCKER_IMAGE_WITH_TAG: &str = "docker.io/artempikulin/testblockchain:multiarch";
 pub const GETH_DOCKER_IMAGE: &str = "docker.io/ethereum/client-go";
 pub const GETH_DOCKER_IMAGE_WITH_TAG: &str = "docker.io/ethereum/client-go:stable";
+#[allow(dead_code)]
+pub const SIA_DOCKER_IMAGE: &str = "docker.io/alrighttt/walletd-komodo";
+#[allow(dead_code)]
+pub const SIA_DOCKER_IMAGE_WITH_TAG: &str = "docker.io/alrighttt/walletd-komodo:latest";
 
 pub const NUCLEUS_IMAGE: &str = "docker.io/komodoofficial/nucleusd";
 pub const ATOM_IMAGE: &str = "docker.io/komodoofficial/gaiad";
@@ -363,6 +367,22 @@ pub fn geth_docker_node<'a>(docker: &'a Cli, ticker: &'static str, port: u16) ->
     let image = GenericImage::new(GETH_DOCKER_IMAGE, "stable");
     let args = vec!["--dev".into(), "--http".into(), "--http.addr=0.0.0.0".into()];
     let image = RunnableImage::from((image, args)).with_mapped_port((port, port));
+    let container = docker.run(image);
+    DockerNode {
+        container,
+        ticker: ticker.into(),
+        port,
+    }
+}
+
+#[allow(dead_code)]
+pub fn sia_docker_node<'a>(docker: &'a Cli, ticker: &'static str, port: u16) -> DockerNode<'a> {
+    let image =
+        GenericImage::new(SIA_DOCKER_IMAGE, "latest").with_env_var("WALLETD_API_PASSWORD", "password".to_string());
+    let args = vec![];
+    let image = RunnableImage::from((image, args))
+        .with_mapped_port((port, port))
+        .with_container_name("sia-docker");
     let container = docker.run(image);
     DockerNode {
         container,
