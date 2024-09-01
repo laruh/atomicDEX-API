@@ -996,9 +996,9 @@ pub struct RefundMakerPaymentTimelockArgs<'a> {
     pub time_lock: u64,
     pub taker_pub: &'a [u8],
     pub tx_type_with_secret_hash: SwapTxTypeWithSecretHash<'a>,
-    pub swap_contract_address: &'a Option<BytesJson>,
     pub swap_unique_data: &'a [u8],
     pub watcher_reward: bool,
+    pub amount: BigDecimal,
 }
 
 #[derive(Debug)]
@@ -1724,6 +1724,7 @@ pub struct RefundMakerPaymentSecretArgs<'a, Coin: ParseCoinAssocTypes + ?Sized> 
     pub taker_pub: &'a Coin::Pubkey,
     /// Unique data of specific swap
     pub swap_unique_data: &'a [u8],
+    pub amount: BigDecimal,
 }
 
 /// Common refund NFT Maker Payment structure for [MakerNftSwapOpsV2::refund_nft_maker_payment_v2_timelock] and

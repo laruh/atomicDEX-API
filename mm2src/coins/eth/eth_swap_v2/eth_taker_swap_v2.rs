@@ -255,7 +255,7 @@ impl EthCoin {
         args: RefundTakerPaymentArgs<'_>,
     ) -> Result<SignedEthTx, TransactionErr> {
         let (token_address, gas_limit) = match &self.coin_type {
-            // TODO need new consts and params for v2 calls
+            // TODO need new taker_v2_refund_timelock const and param for v2 calls
             EthCoinType::Eth => (Address::default(), self.gas_limit.eth_sender_refund),
             EthCoinType::Erc20 {
                 platform: _,
