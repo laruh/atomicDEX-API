@@ -1805,6 +1805,14 @@ pub trait MakerCoinSwapOpsV2: ParseCoinAssocTypes + CommonSwapOpsV2 + Send + Syn
 
     /// Spend maker payment transaction
     async fn spend_maker_payment_v2(&self, args: SpendMakerPaymentArgs<'_, Self>) -> Result<Self::Tx, TransactionErr>;
+
+    /// Wait until maker payment spend is found on-chain
+    async fn wait_for_maker_payment_spend(
+        &self,
+        maker_payment: &Self::Tx,
+        from_block: u64,
+        wait_until: u64,
+    ) -> MmResult<Self::Tx, WaitForPaymentSpendError>;
 }
 
 #[async_trait]
@@ -1841,7 +1849,7 @@ pub trait MakerNftSwapOpsV2: ParseCoinAssocTypes + ParseNftAssocTypes + Send + S
 
 /// Enum representing errors that can occur while waiting for taker payment spend.
 #[derive(Display, Debug, EnumFromStringify)]
-pub enum WaitForTakerPaymentSpendError {
+pub enum WaitForPaymentSpendError {
     /// Timeout error variant, indicating that the wait for taker payment spend has timed out.
     #[display(
         fmt = "Timed out waiting for taker payment spend, wait_until {}, now {}",
@@ -1864,20 +1872,18 @@ pub enum WaitForTakerPaymentSpendError {
     Transport(String),
 }
 
-impl From<WaitForOutputSpendErr> for WaitForTakerPaymentSpendError {
+impl From<WaitForOutputSpendErr> for WaitForPaymentSpendError {
     fn from(err: WaitForOutputSpendErr) -> Self {
         match err {
-            WaitForOutputSpendErr::Timeout { wait_until, now } => {
-                WaitForTakerPaymentSpendError::Timeout { wait_until, now }
-            },
+            WaitForOutputSpendErr::Timeout { wait_until, now } => WaitForPaymentSpendError::Timeout { wait_until, now },
             WaitForOutputSpendErr::NoOutputWithIndex(index) => {
-                WaitForTakerPaymentSpendError::InvalidInputTx(format!("Tx doesn't have output with index {}", index))
+                WaitForPaymentSpendError::InvalidInputTx(format!("Tx doesn't have output with index {}", index))
             },
         }
     }
 }
 
-impl From<PaymentStatusErr> for WaitForTakerPaymentSpendError {
+impl From<PaymentStatusErr> for WaitForPaymentSpendError {
     fn from(e: PaymentStatusErr) -> Self {
         match e {
             PaymentStatusErr::ABIError(e) => Self::ABIError(e),
@@ -1888,7 +1894,7 @@ impl From<PaymentStatusErr> for WaitForTakerPaymentSpendError {
     }
 }
 
-impl From<PrepareTxDataError> for WaitForTakerPaymentSpendError {
+impl From<PrepareTxDataError> for WaitForPaymentSpendError {
     fn from(e: PrepareTxDataError) -> Self {
         match e {
             PrepareTxDataError::ABIError(e) => Self::ABIError(e),
@@ -2029,7 +2035,7 @@ pub trait TakerCoinSwapOpsV2: ParseCoinAssocTypes + CommonSwapOpsV2 + Send + Syn
         taker_payment: &Self::Tx,
         from_block: u64,
         wait_until: u64,
-    ) -> MmResult<Self::Tx, WaitForTakerPaymentSpendError>;
+    ) -> MmResult<Self::Tx, WaitForPaymentSpendError>;
 }
 
 #[async_trait]

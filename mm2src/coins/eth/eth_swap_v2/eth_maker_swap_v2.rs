@@ -3,14 +3,15 @@ use crate::coin_errors::{ValidatePaymentError, ValidatePaymentResult};
 use crate::eth::{decode_contract_call, get_function_input_data, wei_from_big_decimal, EthCoin, EthCoinType,
                  MakerPaymentStateV2, SignedEthTx, MAKER_SWAP_V2};
 use crate::{ParseCoinAssocTypes, RefundMakerPaymentSecretArgs, RefundMakerPaymentTimelockArgs, SendMakerPaymentArgs,
-            SpendMakerPaymentArgs, SwapTxTypeWithSecretHash, Transaction, TransactionErr, ValidateMakerPaymentArgs};
+            SpendMakerPaymentArgs, SwapTxTypeWithSecretHash, Transaction, TransactionErr, ValidateMakerPaymentArgs,
+            WaitForPaymentSpendError};
 use ethabi::{Function, Token};
 use ethcore_transaction::Action;
 use ethereum_types::{Address, Public, U256};
 use ethkey::public_to_address;
 use futures::compat::Future01CompatExt;
 use mm2_err_handle::mm_error::MmError;
-use mm2_err_handle::prelude::MapToMmResult;
+use mm2_err_handle::prelude::{MapToMmResult, MmResult};
 use std::convert::TryInto;
 use web3::types::TransactionId;
 
@@ -305,6 +306,14 @@ impl EthCoin {
         &self,
         _args: SpendMakerPaymentArgs<'_, Self>,
     ) -> Result<SignedEthTx, TransactionErr> {
+        todo!()
+    }
+
+    pub(crate) async fn wait_for_maker_payment_spend_impl(
+        &self,
+        _maker_payment: &SignedEthTx,
+        _wait_until: u64,
+    ) -> MmResult<SignedEthTx, WaitForPaymentSpendError> {
         todo!()
     }
 

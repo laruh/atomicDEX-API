@@ -37,7 +37,7 @@ use crate::{CanRefundHtlc, CheckIfMyPaymentSentArgs, CoinBalance, CoinWithDeriva
             ValidatePaymentError, ValidatePaymentFut, ValidatePaymentInput, ValidateSwapV2TxResult,
             ValidateTakerFundingArgs, ValidateTakerFundingSpendPreimageResult,
             ValidateTakerPaymentSpendPreimageResult, ValidateWatcherSpendInput, VerificationResult,
-            WaitForHTLCTxSpendArgs, WaitForTakerPaymentSpendError, WatcherOps, WatcherReward, WatcherRewardError,
+            WaitForHTLCTxSpendArgs, WaitForPaymentSpendError, WatcherOps, WatcherReward, WatcherRewardError,
             WatcherSearchForSwapTxSpendInput, WatcherValidatePaymentInput, WatcherValidateTakerFeeInput, WithdrawFut};
 use common::executor::{AbortableSystem, AbortedError};
 use futures::{FutureExt, TryFutureExt};
@@ -663,6 +663,15 @@ impl MakerCoinSwapOpsV2 for UtxoStandardCoin {
     async fn spend_maker_payment_v2(&self, args: SpendMakerPaymentArgs<'_, Self>) -> Result<Self::Tx, TransactionErr> {
         utxo_common::spend_maker_payment_v2(self, args).await
     }
+
+    async fn wait_for_maker_payment_spend(
+        &self,
+        _maker_payment: &Self::Tx,
+        _from_block: u64,
+        _wait_until: u64,
+    ) -> MmResult<Self::Tx, WaitForPaymentSpendError> {
+        todo!()
+    }
 }
 
 #[async_trait]
@@ -848,7 +857,7 @@ impl TakerCoinSwapOpsV2 for UtxoStandardCoin {
         taker_payment: &Self::Tx,
         from_block: u64,
         wait_until: u64,
-    ) -> MmResult<Self::Tx, WaitForTakerPaymentSpendError> {
+    ) -> MmResult<Self::Tx, WaitForPaymentSpendError> {
         let res = utxo_common::wait_for_output_spend_impl(
             self.as_ref(),
             taker_payment,
