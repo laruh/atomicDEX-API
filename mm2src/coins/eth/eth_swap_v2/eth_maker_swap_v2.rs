@@ -5,6 +5,8 @@ use crate::eth::{decode_contract_call, get_function_input_data, wei_from_big_dec
 use crate::{ParseCoinAssocTypes, RefundMakerPaymentSecretArgs, RefundMakerPaymentTimelockArgs, SendMakerPaymentArgs,
             SpendMakerPaymentArgs, SwapTxTypeWithSecretHash, Transaction, TransactionErr, ValidateMakerPaymentArgs,
             WaitForPaymentSpendError};
+use common::executor::Timer;
+use common::now_sec;
 use ethabi::{Function, Token};
 use ethcore_transaction::Action;
 use ethereum_types::{Address, Public, U256};
@@ -198,7 +200,7 @@ impl EthCoin {
         args: RefundMakerPaymentTimelockArgs<'_>,
     ) -> Result<SignedEthTx, TransactionErr> {
         let (token_address, gas_limit) = match &self.coin_type {
-            // TODO need new maker_v2_refund_timelock const and param for v2 calls.
+            // TODO need new  refund_maker_timelock_v2 const and param for v2 calls.
             EthCoinType::Eth => (Address::default(), self.gas_limit.eth_sender_refund),
             EthCoinType::Erc20 {
                 platform: _,
@@ -257,7 +259,7 @@ impl EthCoin {
         args: RefundMakerPaymentSecretArgs<'_, Self>,
     ) -> Result<SignedEthTx, TransactionErr> {
         let (token_address, gas_limit) = match &self.coin_type {
-            // TODO need new maker_refund_secret_v2 const and param for v2 calls.
+            // TODO need new  refund_maker_secret_v2 const and param for v2 calls.
             EthCoinType::Eth => (Address::default(), self.gas_limit.eth_sender_refund),
             EthCoinType::Erc20 {
                 platform: _,
@@ -306,7 +308,7 @@ impl EthCoin {
         &self,
         args: SpendMakerPaymentArgs<'_, Self>,
     ) -> Result<SignedEthTx, TransactionErr> {
-        // TODO need new maker_spend_v2 const and param
+        // TODO need new spend_maker_v2 const and param
         let (token_address, gas_limit) = match &self.coin_type {
             EthCoinType::Eth => (Address::default(), U256::from(self.gas_limit.eth_receiver_spend)),
             EthCoinType::Erc20 {
@@ -339,10 +341,46 @@ impl EthCoin {
 
     pub(crate) async fn wait_for_maker_payment_spend_impl(
         &self,
-        _maker_payment: &SignedEthTx,
-        _wait_until: u64,
+        maker_payment: &SignedEthTx,
+        wait_until: u64,
     ) -> MmResult<SignedEthTx, WaitForPaymentSpendError> {
-        todo!()
+        let decoded = {
+            let func = match self.coin_type {
+                EthCoinType::Eth | EthCoinType::Erc20 { .. } => MAKER_SWAP_V2.function("spendMakerPayment")?,
+                EthCoinType::Nft { .. } => {
+                    return MmError::err(WaitForPaymentSpendError::Internal(
+                        "NFT protocol is not supported for ETH and ERC20 Swaps".to_string(),
+                    ));
+                },
+            };
+            decode_contract_call(func, maker_payment.unsigned().data())?
+        };
+        let maker_swap_v2_contract = self
+            .swap_v2_contracts
+            .as_ref()
+            .map(|contracts| contracts.maker_swap_v2_contract)
+            .ok_or_else(|| {
+                WaitForPaymentSpendError::Internal("Expected swap_v2_contracts to be Some, but found None".to_string())
+            })?;
+        loop {
+            let maker_status = self
+                .payment_status_v2(
+                    maker_swap_v2_contract,
+                    decoded[0].clone(), // id from spendMakerPayment
+                    &MAKER_SWAP_V2,
+                    EthPaymentType::MakerPayments,
+                    2,
+                )
+                .await?;
+            if maker_status == U256::from(MakerPaymentStateV2::TakerSpent as u8) {
+                return Ok(maker_payment.clone());
+            }
+            let now = now_sec();
+            if now > wait_until {
+                return MmError::err(WaitForPaymentSpendError::Timeout { wait_until, now });
+            }
+            Timer::sleep(10.).await;
+        }
     }
 
     /// Prepares data for EtomicSwapMakerV2 contract [ethMakerPayment](https://github.com/KomodoPlatform/etomic-swap/blob/5e15641cbf41766cd5b37b4d71842c270773f788/contracts/EtomicSwapMakerV2.sol#L30) method
