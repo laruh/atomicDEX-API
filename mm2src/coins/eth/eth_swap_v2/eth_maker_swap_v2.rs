@@ -240,7 +240,7 @@ impl EthCoin {
                 token_address,
             }
         };
-        let data = try_tx_s!(self.prepare_maker_refund_payment_timelock_data(args).await);
+        let data = try_tx_s!(self.prepare_refund_maker_payment_timelock_data(args).await);
 
         self.sign_and_send_transaction(
             U256::from(ZERO_VALUE),
@@ -257,7 +257,7 @@ impl EthCoin {
         args: RefundMakerPaymentSecretArgs<'_, Self>,
     ) -> Result<SignedEthTx, TransactionErr> {
         let (token_address, gas_limit) = match &self.coin_type {
-            // TODO need new maker_v2_refund_secret const and param for v2 calls.
+            // TODO need new maker_refund_secret_v2 const and param for v2 calls.
             EthCoinType::Eth => (Address::default(), self.gas_limit.eth_sender_refund),
             EthCoinType::Erc20 {
                 platform: _,
@@ -290,7 +290,7 @@ impl EthCoin {
                 token_address,
             }
         };
-        let data = try_tx_s!(self.prepare_maker_refund_payment_secret_data(args).await);
+        let data = try_tx_s!(self.prepare_refund_maker_payment_secret_data(args).await);
 
         self.sign_and_send_transaction(
             U256::from(ZERO_VALUE),
@@ -304,9 +304,37 @@ impl EthCoin {
 
     pub(crate) async fn spend_maker_payment_v2_impl(
         &self,
-        _args: SpendMakerPaymentArgs<'_, Self>,
+        args: SpendMakerPaymentArgs<'_, Self>,
     ) -> Result<SignedEthTx, TransactionErr> {
-        todo!()
+        // TODO need new maker_spend_v2 const and param
+        let (token_address, gas_limit) = match &self.coin_type {
+            EthCoinType::Eth => (Address::default(), U256::from(self.gas_limit.eth_receiver_spend)),
+            EthCoinType::Erc20 {
+                platform: _,
+                token_addr,
+            } => (*token_addr, U256::from(self.gas_limit.erc20_receiver_spend)),
+            EthCoinType::Nft { .. } => {
+                return Err(TransactionErr::ProtocolNotSupported(ERRL!(
+                    "NFT protocol is not supported for ETH and ERC20 Swaps"
+                )))
+            },
+        };
+        let maker_swap_v2_contract = self
+            .swap_v2_contracts
+            .as_ref()
+            .map(|contracts| contracts.maker_swap_v2_contract)
+            .ok_or_else(|| TransactionErr::Plain(ERRL!("Expected swap_v2_contracts to be Some, but found None")))?;
+
+        let data = try_tx_s!(self.prepare_spend_maker_payment_data(args, token_address).await);
+
+        self.sign_and_send_transaction(
+            U256::from(ZERO_VALUE),
+            Action::Call(maker_swap_v2_contract),
+            data,
+            gas_limit,
+        )
+        .compat()
+        .await
     }
 
     pub(crate) async fn wait_for_maker_payment_spend_impl(
@@ -353,7 +381,7 @@ impl EthCoin {
     }
 
     /// Prepares data for EtomicSwapMakerV2 contract [refundMakerPaymentTimelock](https://github.com/KomodoPlatform/etomic-swap/blob/5e15641cbf41766cd5b37b4d71842c270773f788/contracts/EtomicSwapMakerV2.sol#L144) method
-    async fn prepare_maker_refund_payment_timelock_data(
+    async fn prepare_refund_maker_payment_timelock_data(
         &self,
         args: MakerRefundArgs,
     ) -> Result<Vec<u8>, PrepareTxDataError> {
@@ -371,7 +399,7 @@ impl EthCoin {
     }
 
     /// Prepares data for EtomicSwapMakerV2 contract [refundMakerPaymentSecret](https://github.com/KomodoPlatform/etomic-swap/blob/5e15641cbf41766cd5b37b4d71842c270773f788/contracts/EtomicSwapMakerV2.sol#L190) method
-    async fn prepare_maker_refund_payment_secret_data(
+    async fn prepare_refund_maker_payment_secret_data(
         &self,
         args: MakerRefundArgs,
     ) -> Result<Vec<u8>, PrepareTxDataError> {
@@ -384,6 +412,28 @@ impl EthCoin {
             Token::FixedBytes(args.taker_secret.to_vec()),
             Token::FixedBytes(args.maker_secret_hash.to_vec()),
             Token::Address(args.token_address),
+        ])?;
+        Ok(data)
+    }
+
+    /// Prepares data for EtomicSwapMakerV2 contract [spendMakerPayment](https://github.com/KomodoPlatform/etomic-swap/blob/5e15641cbf41766cd5b37b4d71842c270773f788/contracts/EtomicSwapMakerV2.sol#L104) method
+    async fn prepare_spend_maker_payment_data(
+        &self,
+        args: SpendMakerPaymentArgs<'_, Self>,
+        token_address: Address,
+    ) -> Result<Vec<u8>, PrepareTxDataError> {
+        let function = MAKER_SWAP_V2.function("spendMakerPayment")?;
+        let id = self.etomic_swap_id_v2(args.time_lock, args.maker_secret_hash);
+        let maker_address = public_to_address(args.maker_pub);
+        let payment_amount = wei_from_big_decimal(&args.amount, self.decimals)
+            .map_err(|e| PrepareTxDataError::Internal(e.to_string()))?;
+        let data = function.encode_input(&[
+            Token::FixedBytes(id),
+            Token::Uint(payment_amount),
+            Token::Address(maker_address),
+            Token::FixedBytes(args.taker_secret_hash.to_vec()),
+            Token::FixedBytes(args.maker_secret.to_vec()),
+            Token::Address(token_address),
         ])?;
         Ok(data)
     }

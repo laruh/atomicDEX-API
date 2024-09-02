@@ -1761,6 +1761,7 @@ pub struct SpendMakerPaymentArgs<'a, Coin: ParseCoinAssocTypes + ?Sized> {
     pub maker_pub: &'a Coin::Pubkey,
     /// Unique data of specific swap
     pub swap_unique_data: &'a [u8],
+    pub amount: BigDecimal,
 }
 
 pub struct SpendNftMakerPaymentArgs<'a, Coin: ParseCoinAssocTypes + ParseNftAssocTypes + ?Sized> {
