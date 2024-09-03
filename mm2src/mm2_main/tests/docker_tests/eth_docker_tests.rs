@@ -13,12 +13,14 @@ use coins::eth::{checksum_address, eth_addr_to_hex, eth_coin_from_conf_and_reque
 use coins::nft::nft_structs::{Chain, ContractType, NftInfo};
 use coins::{lp_coinfind, CoinProtocol, CoinWithDerivationMethod, CoinsContext, CommonSwapOpsV2, ConfirmPaymentInput,
             DerivationMethod, DexFee, Eip1559Ops, FoundSwapTxSpend, FundingTxSpend, GenTakerFundingSpendArgs,
-            GenTakerPaymentSpendArgs, MakerNftSwapOpsV2, MarketCoinOps, MmCoinEnum, MmCoinStruct, NftSwapInfo,
-            ParseCoinAssocTypes, ParseNftAssocTypes, PrivKeyBuildPolicy, RefundFundingSecretArgs,
-            RefundNftMakerPaymentArgs, RefundPaymentArgs, RefundTakerPaymentArgs, SearchForSwapTxSpendInput,
+            GenTakerPaymentSpendArgs, MakerCoinSwapOpsV2, MakerNftSwapOpsV2, MarketCoinOps, MmCoinEnum, MmCoinStruct,
+            NftSwapInfo, ParseCoinAssocTypes, ParseNftAssocTypes, PrivKeyBuildPolicy, RefundFundingSecretArgs,
+            RefundMakerPaymentSecretArgs, RefundMakerPaymentTimelockArgs, RefundNftMakerPaymentArgs,
+            RefundPaymentArgs, RefundTakerPaymentArgs, SearchForSwapTxSpendInput, SendMakerPaymentArgs,
             SendNftMakerPaymentArgs, SendPaymentArgs, SendTakerFundingArgs, SpendNftMakerPaymentArgs,
             SpendPaymentArgs, SwapOps, SwapTxFeePolicy, SwapTxTypeWithSecretHash, TakerCoinSwapOpsV2, ToBytes,
-            Transaction, TxPreimageWithSig, ValidateNftMakerPaymentArgs, ValidateTakerFundingArgs};
+            Transaction, TxPreimageWithSig, ValidateMakerPaymentArgs, ValidateNftMakerPaymentArgs,
+            ValidateTakerFundingArgs};
 use common::{block_on, now_sec};
 use crypto::Secp256k1Secret;
 use ethereum_types::U256;
@@ -2093,4 +2095,305 @@ fn send_and_refund_taker_funding_exceed_pre_approve_timelock_erc20() {
         funding_tx_refund.tx_hash()
     );
     wait_for_confirmations(&taker_coin, &funding_tx_refund, 150);
+}
+
+#[ignore]
+#[test]
+fn send_maker_payment_and_refund_timelock_eth() {
+    let taker_coin = get_or_create_sepolia_coin(&MM_CTX1, SEPOLIA_TAKER_PRIV, ETH, &eth_sepolia_conf(), false);
+    let maker_coin = get_or_create_sepolia_coin(&MM_CTX, SEPOLIA_MAKER_PRIV, ETH, &eth_sepolia_conf(), false);
+
+    let taker_secret = vec![0; 32];
+    let taker_secret_hash = sha256(&taker_secret).to_vec();
+    let maker_secret = vec![1; 32];
+    let maker_secret_hash = sha256(&maker_secret).to_vec();
+    let payment_time_lock = now_sec() - 1000;
+
+    let maker_address = block_on(maker_coin.my_addr());
+    let taker_pub = &taker_coin.derive_htlc_pubkey_v2(&[]);
+
+    let trading_amount = BigDecimal::from_str("0.0001").unwrap();
+
+    let payment_args = SendMakerPaymentArgs {
+        time_lock: payment_time_lock,
+        taker_secret_hash: &taker_secret_hash,
+        maker_secret_hash: &maker_secret_hash,
+        amount: trading_amount.clone(),
+        taker_pub,
+        swap_unique_data: &[],
+    };
+    wait_pending_transactions(Address::from_slice(maker_address.as_bytes()));
+    let payment_tx = block_on(maker_coin.send_maker_payment_v2(payment_args)).unwrap();
+    log!("Maker sent ETH payment, tx hash: {:02x}", payment_tx.tx_hash());
+    wait_for_confirmations(&maker_coin, &payment_tx, 100);
+
+    let tx_type_with_secret_hash = SwapTxTypeWithSecretHash::MakerPaymentV2 {
+        maker_secret_hash: &maker_secret_hash,
+        taker_secret_hash: &taker_secret_hash,
+    };
+    let refund_args = RefundMakerPaymentTimelockArgs {
+        payment_tx: &payment_tx.to_bytes(),
+        time_lock: payment_time_lock,
+        taker_pub: &taker_pub.to_bytes(),
+        tx_type_with_secret_hash,
+        swap_unique_data: &[],
+        watcher_reward: false,
+        amount: trading_amount,
+    };
+    wait_pending_transactions(Address::from_slice(maker_address.as_bytes()));
+    let payment_tx_refund = block_on(maker_coin.refund_maker_payment_v2_timelock(refund_args)).unwrap();
+    log!(
+        "Maker refunded ETH payment after timelock, tx hash: {:02x}",
+        payment_tx_refund.tx_hash()
+    );
+    wait_for_confirmations(&maker_coin, &payment_tx_refund, 100);
+}
+
+#[ignore]
+#[test]
+fn send_maker_payment_and_refund_timelock_erc20() {
+    let erc20_conf = &sepolia_erc20_dev_conf(&sepolia_erc20_contract_checksum());
+    let taker_coin = get_or_create_sepolia_coin(&MM_CTX1, SEPOLIA_TAKER_PRIV, ERC20, erc20_conf, true);
+    let maker_coin = get_or_create_sepolia_coin(&MM_CTX, SEPOLIA_MAKER_PRIV, ERC20, erc20_conf, true);
+
+    let taker_secret = vec![0; 32];
+    let taker_secret_hash = sha256(&taker_secret).to_vec();
+    let maker_secret = vec![1; 32];
+    let maker_secret_hash = sha256(&maker_secret).to_vec();
+    let payment_time_lock = now_sec() - 1000;
+
+    let maker_address = block_on(maker_coin.my_addr());
+    let taker_pub = &taker_coin.derive_htlc_pubkey_v2(&[]);
+
+    let trading_amount = BigDecimal::from_str("0.0001").unwrap();
+
+    let payment_args = SendMakerPaymentArgs {
+        time_lock: payment_time_lock,
+        taker_secret_hash: &taker_secret_hash,
+        maker_secret_hash: &maker_secret_hash,
+        amount: trading_amount.clone(),
+        taker_pub,
+        swap_unique_data: &[],
+    };
+    wait_pending_transactions(Address::from_slice(maker_address.as_bytes()));
+    let payment_tx = block_on(maker_coin.send_maker_payment_v2(payment_args)).unwrap();
+    log!("Maker sent ERC20 payment, tx hash: {:02x}", payment_tx.tx_hash());
+    wait_for_confirmations(&maker_coin, &payment_tx, 100);
+
+    let tx_type_with_secret_hash = SwapTxTypeWithSecretHash::MakerPaymentV2 {
+        maker_secret_hash: &maker_secret_hash,
+        taker_secret_hash: &taker_secret_hash,
+    };
+    let refund_args = RefundMakerPaymentTimelockArgs {
+        payment_tx: &payment_tx.to_bytes(),
+        time_lock: payment_time_lock,
+        taker_pub: &taker_pub.to_bytes(),
+        tx_type_with_secret_hash,
+        swap_unique_data: &[],
+        watcher_reward: false,
+        amount: trading_amount,
+    };
+    wait_pending_transactions(Address::from_slice(maker_address.as_bytes()));
+    let payment_tx_refund = block_on(maker_coin.refund_maker_payment_v2_timelock(refund_args)).unwrap();
+    log!(
+        "Maker refunded ERC20 payment after timelock, tx hash: {:02x}",
+        payment_tx_refund.tx_hash()
+    );
+    wait_for_confirmations(&maker_coin, &payment_tx_refund, 100);
+}
+
+#[ignore]
+#[test]
+fn send_maker_payment_and_refund_secret_eth() {
+    let taker_coin = get_or_create_sepolia_coin(&MM_CTX1, SEPOLIA_TAKER_PRIV, ETH, &eth_sepolia_conf(), false);
+    let maker_coin = get_or_create_sepolia_coin(&MM_CTX, SEPOLIA_MAKER_PRIV, ETH, &eth_sepolia_conf(), false);
+
+    let taker_secret = vec![0; 32];
+    let taker_secret_hash = sha256(&taker_secret).to_vec();
+    let maker_secret = vec![1; 32];
+    let maker_secret_hash = sha256(&maker_secret).to_vec();
+    let payment_time_lock = now_sec() + 1000;
+
+    let maker_address = block_on(maker_coin.my_addr());
+    let taker_pub = &taker_coin.derive_htlc_pubkey_v2(&[]);
+
+    let trading_amount = BigDecimal::from_str("0.0001").unwrap();
+
+    let payment_args = SendMakerPaymentArgs {
+        time_lock: payment_time_lock,
+        taker_secret_hash: &taker_secret_hash,
+        maker_secret_hash: &maker_secret_hash,
+        amount: trading_amount.clone(),
+        taker_pub,
+        swap_unique_data: &[],
+    };
+    wait_pending_transactions(Address::from_slice(maker_address.as_bytes()));
+    let payment_tx = block_on(maker_coin.send_maker_payment_v2(payment_args)).unwrap();
+    log!("Maker sent ETH payment, tx hash: {:02x}", payment_tx.tx_hash());
+    wait_for_confirmations(&maker_coin, &payment_tx, 100);
+
+    let refund_args = RefundMakerPaymentSecretArgs {
+        maker_payment_tx: &payment_tx,
+        time_lock: payment_time_lock,
+        taker_secret_hash: &taker_secret_hash,
+        maker_secret_hash: &maker_secret_hash,
+        taker_secret: &taker_secret,
+        taker_pub,
+        swap_unique_data: &[],
+        amount: trading_amount,
+    };
+    wait_pending_transactions(Address::from_slice(maker_address.as_bytes()));
+    let payment_tx_refund = block_on(maker_coin.refund_maker_payment_v2_secret(refund_args)).unwrap();
+    log!(
+        "Maker refunded ETH payment using taker secret, tx hash: {:02x}",
+        payment_tx_refund.tx_hash()
+    );
+    wait_for_confirmations(&maker_coin, &payment_tx_refund, 100);
+}
+
+#[ignore]
+#[test]
+fn send_maker_payment_and_refund_secret_erc20() {
+    let erc20_conf = &sepolia_erc20_dev_conf(&sepolia_erc20_contract_checksum());
+    let taker_coin = get_or_create_sepolia_coin(&MM_CTX1, SEPOLIA_TAKER_PRIV, ERC20, erc20_conf, true);
+    let maker_coin = get_or_create_sepolia_coin(&MM_CTX, SEPOLIA_MAKER_PRIV, ERC20, erc20_conf, true);
+
+    let taker_secret = vec![0; 32];
+    let taker_secret_hash = sha256(&taker_secret).to_vec();
+    let maker_secret = vec![1; 32];
+    let maker_secret_hash = sha256(&maker_secret).to_vec();
+    let payment_time_lock = now_sec() + 1000;
+
+    let maker_address = block_on(maker_coin.my_addr());
+    let taker_pub = &taker_coin.derive_htlc_pubkey_v2(&[]);
+
+    let trading_amount = BigDecimal::from_str("0.0001").unwrap();
+
+    let payment_args = SendMakerPaymentArgs {
+        time_lock: payment_time_lock,
+        taker_secret_hash: &taker_secret_hash,
+        maker_secret_hash: &maker_secret_hash,
+        amount: trading_amount.clone(),
+        taker_pub,
+        swap_unique_data: &[],
+    };
+    wait_pending_transactions(Address::from_slice(maker_address.as_bytes()));
+    let payment_tx = block_on(maker_coin.send_maker_payment_v2(payment_args)).unwrap();
+    log!("Maker sent ERC20 payment, tx hash: {:02x}", payment_tx.tx_hash());
+    wait_for_confirmations(&maker_coin, &payment_tx, 100);
+
+    let refund_args = RefundMakerPaymentSecretArgs {
+        maker_payment_tx: &payment_tx,
+        time_lock: payment_time_lock,
+        taker_secret_hash: &taker_secret_hash,
+        maker_secret_hash: &maker_secret_hash,
+        taker_secret: &taker_secret,
+        taker_pub,
+        swap_unique_data: &[],
+        amount: trading_amount,
+    };
+    wait_pending_transactions(Address::from_slice(maker_address.as_bytes()));
+    let payment_tx_refund = block_on(maker_coin.refund_maker_payment_v2_secret(refund_args)).unwrap();
+    log!(
+        "Maker refunded ERC20 payment using taker secret, tx hash: {:02x}",
+        payment_tx_refund.tx_hash()
+    );
+    wait_for_confirmations(&maker_coin, &payment_tx_refund, 100);
+}
+
+#[ignore]
+#[test]
+fn send_and_spend_maker_payment_eth() {
+    let taker_coin = get_or_create_sepolia_coin(&MM_CTX1, SEPOLIA_TAKER_PRIV, ETH, &eth_sepolia_conf(), false);
+    let maker_coin = get_or_create_sepolia_coin(&MM_CTX, SEPOLIA_MAKER_PRIV, ETH, &eth_sepolia_conf(), false);
+
+    let taker_secret = vec![0; 32];
+    let taker_secret_hash = sha256(&taker_secret).to_vec();
+    let maker_secret = vec![1; 32];
+    let maker_secret_hash = sha256(&maker_secret).to_vec();
+    let payment_time_lock = now_sec() + 1000;
+
+    let maker_address = block_on(maker_coin.my_addr());
+    let maker_pub = &maker_coin.derive_htlc_pubkey_v2(&[]);
+    let taker_pub = &taker_coin.derive_htlc_pubkey_v2(&[]);
+
+    let trading_amount = BigDecimal::from_str("0.0001").unwrap();
+
+    let payment_args = SendMakerPaymentArgs {
+        time_lock: payment_time_lock,
+        taker_secret_hash: &taker_secret_hash,
+        maker_secret_hash: &maker_secret_hash,
+        amount: trading_amount.clone(),
+        taker_pub,
+        swap_unique_data: &[],
+    };
+    wait_pending_transactions(Address::from_slice(maker_address.as_bytes()));
+    let payment_tx = block_on(maker_coin.send_maker_payment_v2(payment_args)).unwrap();
+    log!("Maker sent ETH payment, tx hash: {:02x}", payment_tx.tx_hash());
+    wait_for_confirmations(&maker_coin, &payment_tx, 100);
+
+    let validation_args = ValidateMakerPaymentArgs {
+        maker_payment_tx: &payment_tx,
+        time_lock: payment_time_lock,
+        taker_secret_hash: &taker_secret_hash,
+        maker_secret_hash: &maker_secret_hash,
+        amount: trading_amount.clone(),
+        maker_pub,
+        swap_unique_data: &[],
+    };
+    block_on(taker_coin.validate_maker_payment_v2(validation_args)).unwrap();
+    log!("Taker validated maker ETH payment");
+
+    // TODO spend_maker_payment_v2
+
+    // TODO wait_for_maker_payment_spend
+}
+
+#[ignore]
+#[test]
+fn send_and_spend_maker_payment_erc20() {
+    let erc20_conf = &sepolia_erc20_dev_conf(&sepolia_erc20_contract_checksum());
+    let taker_coin = get_or_create_sepolia_coin(&MM_CTX1, SEPOLIA_TAKER_PRIV, ERC20, erc20_conf, true);
+    let maker_coin = get_or_create_sepolia_coin(&MM_CTX, SEPOLIA_MAKER_PRIV, ERC20, erc20_conf, true);
+
+    let taker_secret = vec![0; 32];
+    let taker_secret_hash = sha256(&taker_secret).to_vec();
+    let maker_secret = vec![1; 32];
+    let maker_secret_hash = sha256(&maker_secret).to_vec();
+    let payment_time_lock = now_sec() + 1000;
+
+    let maker_address = block_on(maker_coin.my_addr());
+    let maker_pub = &maker_coin.derive_htlc_pubkey_v2(&[]);
+    let taker_pub = &taker_coin.derive_htlc_pubkey_v2(&[]);
+
+    let trading_amount = BigDecimal::from_str("0.0001").unwrap();
+
+    let payment_args = SendMakerPaymentArgs {
+        time_lock: payment_time_lock,
+        taker_secret_hash: &taker_secret_hash,
+        maker_secret_hash: &maker_secret_hash,
+        amount: trading_amount.clone(),
+        taker_pub,
+        swap_unique_data: &[],
+    };
+    wait_pending_transactions(Address::from_slice(maker_address.as_bytes()));
+    let payment_tx = block_on(maker_coin.send_maker_payment_v2(payment_args)).unwrap();
+    log!("Maker sent ERC20 payment, tx hash: {:02x}", payment_tx.tx_hash());
+    wait_for_confirmations(&maker_coin, &payment_tx, 100);
+
+    let validation_args = ValidateMakerPaymentArgs {
+        maker_payment_tx: &payment_tx,
+        time_lock: payment_time_lock,
+        taker_secret_hash: &taker_secret_hash,
+        maker_secret_hash: &maker_secret_hash,
+        amount: trading_amount.clone(),
+        maker_pub,
+        swap_unique_data: &[],
+    };
+    block_on(taker_coin.validate_maker_payment_v2(validation_args)).unwrap();
+    log!("Taker validated maker ERC20 payment");
+
+    // TODO spend_maker_payment_v2
+
+    // TODO wait_for_maker_payment_spend
 }
