@@ -2337,7 +2337,7 @@ fn send_and_spend_maker_payment_eth() {
         time_lock: payment_time_lock,
         taker_secret_hash: &taker_secret_hash,
         maker_secret_hash: &maker_secret_hash,
-        amount: trading_amount.clone(),
+        amount: trading_amount,
         maker_pub,
         swap_unique_data: &[],
     };
@@ -2386,7 +2386,7 @@ fn send_and_spend_maker_payment_erc20() {
         time_lock: payment_time_lock,
         taker_secret_hash: &taker_secret_hash,
         maker_secret_hash: &maker_secret_hash,
-        amount: trading_amount.clone(),
+        amount: trading_amount,
         maker_pub,
         swap_unique_data: &[],
     };
