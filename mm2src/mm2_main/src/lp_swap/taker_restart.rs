@@ -49,7 +49,7 @@ pub async fn get_command_based_on_maker_or_watcher_activity(
             Err(e) => ERR!("Error {} when trying to find taker payment spend", e),
         },
         TakerSwapCommand::SpendMakerPayment => Ok(command),
-        TakerSwapCommand::ConfirmMakerPaymentSpend => check_maker_payment_spend_and_add_event(ctx, swap, saved).await,
+        TakerSwapCommand::ConfirmMakerPaymentSpend => Ok(command),
         TakerSwapCommand::PrepareForTakerPaymentRefund | TakerSwapCommand::RefundTakerPayment => {
             #[cfg(not(any(test, feature = "run-docker-tests")))]
             {
