@@ -2346,7 +2346,6 @@ pub async fn wait_for_swap_negotiation_failure(mm: &MarketMakerIt, swap: &str, u
 /// Helper function requesting my swap status and checking it's events
 pub async fn check_my_swap_status(mm: &MarketMakerIt, uuid: &str, maker_amount: BigDecimal, taker_amount: BigDecimal) {
     let status_response = my_swap_status(mm, uuid).await.unwrap();
-    log!("status_response:\n{:?}\n", status_response);
     let swap_type = match status_response["result"]["type"].as_str() {
         Some(t) => t,
         None => return,
@@ -2358,7 +2357,6 @@ pub async fn check_my_swap_status(mm: &MarketMakerIt, uuid: &str, maker_amount: 
     } else {
         assert_eq!(success_events, MAKER_SUCCESS_EVENTS)
     }
-    log!("success_events:\n{:?}\n", success_events);
 
     let expected_error_events = if swap_type == "Taker" {
         TAKER_ERROR_EVENTS.to_vec()
@@ -2377,7 +2375,6 @@ pub async fn check_my_swap_status(mm: &MarketMakerIt, uuid: &str, maker_amount: 
         .iter()
         .map(|item| item["event"]["type"].as_str().unwrap().to_string())
         .collect::<Vec<String>>();
-    log!("actual_events:\n{:?}\n", actual_events);
     assert!(actual_events.iter().all(|item| success_events.contains(item)));
 }
 
