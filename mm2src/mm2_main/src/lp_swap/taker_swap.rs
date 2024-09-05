@@ -183,7 +183,7 @@ impl TakerSavedEvent {
             TakerSwapEvent::MakerPaymentSpent(_) => Some(TakerSwapCommand::ConfirmMakerPaymentSpend),
             TakerSwapEvent::MakerPaymentSpendConfirmed => Some(TakerSwapCommand::Finish),
             TakerSwapEvent::MakerPaymentSpendConfirmFailed(_) => Some(TakerSwapCommand::PrepareForTakerPaymentRefund),
-            TakerSwapEvent::MakerPaymentSpentByWatcher(_) => Some(TakerSwapCommand::Finish),
+            TakerSwapEvent::MakerPaymentSpentByWatcher(_) => Some(TakerSwapCommand::ConfirmMakerPaymentSpend),
             TakerSwapEvent::MakerPaymentSpendFailed(_) => Some(TakerSwapCommand::PrepareForTakerPaymentRefund),
             TakerSwapEvent::TakerPaymentWaitRefundStarted { .. } => {
                 Some(TakerSwapCommand::PrepareForTakerPaymentRefund)
@@ -558,6 +558,7 @@ pub struct TakerSwapMut {
     pub maker_payment: Option<TransactionIdentifier>,
     pub taker_payment: Option<TransactionIdentifier>,
     maker_payment_spend: Option<TransactionIdentifier>,
+    maker_payment_spend_confirmed: bool,
     taker_payment_spend: Option<TransactionIdentifier>,
     maker_payment_spend_preimage: Option<Vec<u8>>,
     taker_payment_refund_preimage: Option<Vec<u8>>,
@@ -847,7 +848,7 @@ impl TakerSwap {
             },
             TakerSwapEvent::TakerPaymentWaitForSpendFailed(err) => self.errors.lock().push(err),
             TakerSwapEvent::MakerPaymentSpent(tx) => self.w().maker_payment_spend = Some(tx),
-            TakerSwapEvent::MakerPaymentSpendConfirmed => (),
+            TakerSwapEvent::MakerPaymentSpendConfirmed => self.w().maker_payment_spend_confirmed = true,
             TakerSwapEvent::MakerPaymentSpendConfirmFailed(err) => self.errors.lock().push(err),
             TakerSwapEvent::MakerPaymentSpentByWatcher(tx) => self.w().maker_payment_spend = Some(tx),
             TakerSwapEvent::MakerPaymentSpendFailed(err) => self.errors.lock().push(err),
@@ -920,6 +921,7 @@ impl TakerSwap {
                 other_taker_coin_htlc_pub: H264::default(),
                 taker_fee: None,
                 maker_payment: None,
+                maker_payment_spend_confirmed: false,
                 taker_payment: None,
                 taker_payment_spend: None,
                 maker_payment_spend_preimage: None,
