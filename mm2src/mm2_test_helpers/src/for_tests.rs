@@ -831,6 +831,13 @@ pub fn erc20_dev_conf(contract_address: &str) -> Json {
     })
 }
 
+/// ERC20 token configuration used for dockerized tests on Sepolia
+pub fn sepolia_erc20_dev_conf(contract_address: &str) -> Json {
+    let mut conf = erc20_dev_conf(contract_address);
+    set_chain_id(&mut conf, ETH_SEPOLIA_CHAIN_ID);
+    conf
+}
+
 /// global NFT configuration used for dockerized Geth dev node
 pub fn nft_dev_conf() -> Json {
     json!({
@@ -849,21 +856,8 @@ pub fn nft_dev_conf() -> Json {
     })
 }
 
-/// global NFT configuration used for Sepolia testnet
-pub fn nft_sepolia_conf() -> Json {
-    json!({
-        "coin": "NFT_ETH",
-        "name": "nftdev",
-        "chain_id": 11155111,
-        "mm2": 1,
-        "derivation_path": "m/44'/60'",
-        "protocol": {
-            "type": "NFT",
-            "protocol_data": {
-                "platform": "ETH"
-            }
-        }
-    })
+fn set_chain_id(conf: &mut Json, chain_id: u64) {
+    conf["chain_id"] = json!(chain_id);
 }
 
 pub fn eth_sepolia_conf() -> Json {
@@ -871,7 +865,7 @@ pub fn eth_sepolia_conf() -> Json {
         "coin": "ETH",
         "name": "ethereum",
         "derivation_path": "m/44'/60'",
-        "chain_id": 11155111,
+        "chain_id": ETH_SEPOLIA_CHAIN_ID,
         "protocol": {
             "type": "ETH"
         },
@@ -885,7 +879,7 @@ pub fn eth_sepolia_trezor_firmware_compat_conf() -> Json {
         "coin": "tETH",
         "name": "ethereum",
         "derivation_path": "m/44'/1'", // Note: trezor uses coin type 1' for eth for testnet (SLIP44_TESTNET)
-        "chain_id": 11155111,
+        "chain_id": ETH_SEPOLIA_CHAIN_ID,
         "protocol": {
             "type": "ETH"
         },
@@ -915,12 +909,12 @@ pub fn jst_sepolia_conf() -> Json {
     json!({
         "coin": "JST",
         "name": "jst",
-        "chain_id": 11155111,
+        "chain_id": ETH_SEPOLIA_CHAIN_ID,
         "protocol": {
             "type": "ERC20",
             "protocol_data": {
                 "platform": "ETH",
-                "chain_id": 11155111,
+                "chain_id": ETH_SEPOLIA_CHAIN_ID,
                 "contract_address": ETH_SEPOLIA_TOKEN_CONTRACT
             }
         },
@@ -932,14 +926,14 @@ pub fn jst_sepolia_trezor_conf() -> Json {
     json!({
         "coin": "tJST",
         "name": "tjst",
-        "chain_id": 11155111,
+        "chain_id": ETH_SEPOLIA_CHAIN_ID,
         "derivation_path": "m/44'/1'", // Note: Trezor uses 1' coin type for all testnets
         "trezor_coin": "tETH",
         "protocol": {
             "type": "ERC20",
             "protocol_data": {
                 "platform": "ETH",
-                "chain_id": 11155111,
+                "chain_id": ETH_SEPOLIA_CHAIN_ID,
                 "contract_address": ETH_SEPOLIA_TOKEN_CONTRACT
             }
         }
