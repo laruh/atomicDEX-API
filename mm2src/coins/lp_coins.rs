@@ -240,6 +240,7 @@ use coin_errors::{MyAddressError, ValidatePaymentError, ValidatePaymentFut, Vali
 pub mod coins_tests;
 
 pub mod eth;
+use eth::eth_swap_v2::{PaymentStatusErr, PrepareTxDataError, ValidatePaymentV2Err};
 use eth::GetValidEthWithdrawAddError;
 use eth::{eth_coin_from_conf_and_request, get_eth_address, EthCoin, EthGasDetailsErr, EthTxFeeDetails,
           GetEthAddressError, SignedEthTx};
@@ -275,6 +276,9 @@ pub mod test_coin;
 pub use test_coin::TestCoin;
 
 pub mod tx_history_storage;
+
+#[cfg(feature = "enable-sia")] pub mod siacoin;
+#[cfg(feature = "enable-sia")] use siacoin::SiaCoin;
 
 #[doc(hidden)]
 #[allow(unused_variables)]
@@ -318,10 +322,6 @@ use script::Script;
 pub mod z_coin;
 use crate::coin_balance::{BalanceObjectOps, HDWalletBalanceObject};
 use z_coin::{ZCoin, ZcoinProtocolInfo};
-#[cfg(feature = "enable-sia")] pub mod sia;
-use eth::eth_swap_v2::PrepareTxDataError;
-use eth::eth_swap_v2::{PaymentStatusErr, ValidatePaymentV2Err};
-#[cfg(feature = "enable-sia")] use sia::SiaCoin;
 
 pub type TransactionFut = Box<dyn Future<Item = TransactionEnum, Error = TransactionErr> + Send>;
 pub type TransactionResult = Result<TransactionEnum, TransactionErr>;
