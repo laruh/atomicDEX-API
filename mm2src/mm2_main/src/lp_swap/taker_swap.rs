@@ -183,7 +183,7 @@ impl TakerSavedEvent {
             TakerSwapEvent::MakerPaymentSpent(_) => Some(TakerSwapCommand::ConfirmMakerPaymentSpend),
             TakerSwapEvent::MakerPaymentSpendConfirmed => Some(TakerSwapCommand::Finish),
             TakerSwapEvent::MakerPaymentSpendConfirmFailed(_) => Some(TakerSwapCommand::PrepareForTakerPaymentRefund),
-            TakerSwapEvent::MakerPaymentSpentByWatcher(_) => Some(TakerSwapCommand::ConfirmMakerPaymentSpend),
+            TakerSwapEvent::MakerPaymentSpentByWatcher(_) => Some(TakerSwapCommand::Finish),
             TakerSwapEvent::MakerPaymentSpendFailed(_) => Some(TakerSwapCommand::PrepareForTakerPaymentRefund),
             TakerSwapEvent::TakerPaymentWaitRefundStarted { .. } => {
                 Some(TakerSwapCommand::PrepareForTakerPaymentRefund)
