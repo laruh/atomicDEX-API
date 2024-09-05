@@ -222,7 +222,6 @@ fn convert_taker_to_maker_events(
             | TakerSwapEvent::MakerPaymentWaitConfirmFailed(_)
             | TakerSwapEvent::TakerPaymentTransactionFailed(_)
             | TakerSwapEvent::TakerPaymentDataSendFailed(_)
-            | TakerSwapEvent::MakerPaymentSpendConfirmFailed(_)
             // We actually could confirm TakerPayment and spend it, but for now we don't know about the transaction.
             | TakerSwapEvent::TakerPaymentWaitConfirmFailed(_) => {
                 // Maker shouldn't receive an info about TakerPayment.
@@ -266,6 +265,7 @@ fn convert_taker_to_maker_events(
             | TakerSwapEvent::MakerPaymentValidatedAndConfirmed
             | TakerSwapEvent::MakerPaymentSpent(_)
             | TakerSwapEvent::MakerPaymentSpendConfirmed
+            | TakerSwapEvent::MakerPaymentSpendConfirmFailed(_)
             | TakerSwapEvent::MakerPaymentSpentByWatcher(_)
             | TakerSwapEvent::MakerPaymentSpendFailed(_)
             // We don't know the reason at the moment, so we rely on the errors handling above.
