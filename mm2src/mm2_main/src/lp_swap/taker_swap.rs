@@ -1856,7 +1856,7 @@ impl TakerSwap {
         let confirm_maker_payment_spend_input = ConfirmPaymentInput {
             payment_tx: self.r().maker_payment_spend.clone().unwrap().tx_hex.0,
             confirmations,
-            requires_nota: false,
+            requires_nota: self.r().data.maker_payment_requires_nota.unwrap_or(false),
             wait_until: self.wait_refund_until(),
             check_every: WAIT_CONFIRM_INTERVAL_SEC,
         };
