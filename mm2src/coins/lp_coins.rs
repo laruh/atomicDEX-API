@@ -2085,7 +2085,8 @@ pub trait MarketCoinOps {
     /// Signs raw utxo transaction in hexadecimal format as input and returns signed transaction in hexadecimal format
     async fn sign_raw_tx(&self, args: &SignRawTransactionRequest) -> RawTransactionResult;
 
-    fn wait_for_confirmations(&self, input: ConfirmPaymentInput) -> Box<dyn Future<Item = (), Error = String> + Send>;
+    /// Wait for confirmations and return confirmation number
+    fn wait_for_confirmations(&self, input: ConfirmPaymentInput) -> Box<dyn Future<Item = u64, Error = String> + Send>;
 
     fn wait_for_htlc_tx_spend(&self, args: WaitForHTLCTxSpendArgs<'_>) -> TransactionFut;
 

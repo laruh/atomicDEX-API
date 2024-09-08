@@ -2560,7 +2560,7 @@ impl MarketCoinOps for TendermintCoin {
         })
     }
 
-    fn wait_for_confirmations(&self, input: ConfirmPaymentInput) -> Box<dyn Future<Item = (), Error = String> + Send> {
+    fn wait_for_confirmations(&self, input: ConfirmPaymentInput) -> Box<dyn Future<Item = u64, Error = String> + Send> {
         // Sanity check
         let _: TxRaw = try_fus!(Message::decode(input.payment_tx.as_slice()));
 
@@ -2581,7 +2581,8 @@ impl MarketCoinOps for TendermintCoin {
 
                 if let Some(tx_status_code) = tx_status_code {
                     return match tx_status_code {
-                        cosmrs::tendermint::abci::Code::Ok => Ok(()),
+                        // Tendermint uses Byzantine Fault Tolerance (BFT), achieve instant finality once a block is committed.
+                        cosmrs::tendermint::abci::Code::Ok => Ok(1u64),
                         cosmrs::tendermint::abci::Code::Err(err_code) => Err(format!(
                             "Got error code: '{}' for tx: '{}'. Broadcasted tx isn't valid.",
                             err_code, tx_hash

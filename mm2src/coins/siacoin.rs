@@ -366,7 +366,10 @@ impl MarketCoinOps for SiaCoin {
     #[inline(always)]
     async fn sign_raw_tx(&self, _args: &SignRawTransactionRequest) -> RawTransactionResult { unimplemented!() }
 
-    fn wait_for_confirmations(&self, _input: ConfirmPaymentInput) -> Box<dyn Future<Item = (), Error = String> + Send> {
+    fn wait_for_confirmations(
+        &self,
+        _input: ConfirmPaymentInput,
+    ) -> Box<dyn Future<Item = u64, Error = String> + Send> {
         unimplemented!()
     }
 

@@ -845,7 +845,7 @@ impl MarketCoinOps for QtumCoin {
         utxo_common::sign_raw_tx(self, args).await
     }
 
-    fn wait_for_confirmations(&self, input: ConfirmPaymentInput) -> Box<dyn Future<Item = (), Error = String> + Send> {
+    fn wait_for_confirmations(&self, input: ConfirmPaymentInput) -> Box<dyn Future<Item = u64, Error = String> + Send> {
         utxo_common::wait_for_confirmations(&self.utxo_arc, input)
     }
 

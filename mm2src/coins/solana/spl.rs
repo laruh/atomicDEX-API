@@ -274,7 +274,10 @@ impl MarketCoinOps for SplToken {
         })
     }
 
-    fn wait_for_confirmations(&self, _input: ConfirmPaymentInput) -> Box<dyn Future<Item = (), Error = String> + Send> {
+    fn wait_for_confirmations(
+        &self,
+        _input: ConfirmPaymentInput,
+    ) -> Box<dyn Future<Item = u64, Error = String> + Send> {
         unimplemented!()
     }
 

@@ -2844,7 +2844,7 @@ async fn sign_raw_utxo_tx<T: AsRef<UtxoCoinFields> + UtxoTxGenerationOps>(
 pub fn wait_for_confirmations(
     coin: &UtxoCoinFields,
     input: ConfirmPaymentInput,
-) -> Box<dyn Future<Item = (), Error = String> + Send> {
+) -> Box<dyn Future<Item = u64, Error = String> + Send> {
     let mut tx: UtxoTx = try_fus!(deserialize(input.payment_tx.as_slice()).map_err(|e| ERRL!("{:?}", e)));
     tx.tx_hash_algo = coin.tx_hash_algo;
     coin.rpc_client.wait_for_confirmations(
