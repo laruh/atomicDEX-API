@@ -245,10 +245,38 @@ pub mod gas_limit {
     pub const ERC20_RECEIVER_SPEND: u64 = 150_000;
     /// Gas limit for swap refund tx with coins
     pub const ETH_SENDER_REFUND: u64 = 100_000;
-    /// Gas limit for swap refund tx with with ERC20 tokens
+    /// Gas limit for swap refund tx with ERC20 tokens
     pub const ERC20_SENDER_REFUND: u64 = 150_000;
     /// Gas limit for other operations
     pub const ETH_MAX_TRADE_GAS: u64 = 150_000;
+}
+
+/// Gas limits for EthGasLimitV2
+pub mod gas_limit_v2 {
+    /// Gas limits for maker operations in EthGasLimitV2
+    pub mod maker {
+        pub const ETH_SEND_PAYMENT: u64 = 65_000;
+        pub const ERC20_SEND_PAYMENT: u64 = 115_000;
+        pub const ETH_TAKER_SPEND: u64 = 65_000;
+        pub const ERC20_TAKER_SPEND: u64 = 65_000;
+        pub const ETH_MAKER_REFUND_TIMELOCK: u64 = 65_000;
+        pub const ERC20_MAKER_REFUND_TIMELOCK: u64 = 65_000;
+        pub const ETH_MAKER_REFUND_SECRET: u64 = 65_000;
+        pub const ERC20_MAKER_REFUND_SECRET: u64 = 65_000;
+    }
+
+    /// Gas limits for taker operations in EthGasLimitV2
+    pub mod taker {
+        pub const ETH_SEND_PAYMENT: u64 = 65_000;
+        pub const ERC20_SEND_PAYMENT: u64 = 115_000;
+        pub const ETH_MAKER_SPEND: u64 = 65_000;
+        pub const ERC20_MAKER_SPEND: u64 = 115_000;
+        pub const ETH_TAKER_REFUND_TIMELOCK: u64 = 65_000;
+        pub const ERC20_TAKER_REFUND_TIMELOCK: u64 = 70_000;
+        pub const ETH_TAKER_REFUND_SECRET: u64 = 65_000;
+        pub const ERC20_TAKER_REFUND_SECRET: u64 = 70_000;
+        pub const APPROVE_PAYMENT: u64 = 50_000;
+    }
 }
 
 /// Coin conf param to override default gas limits
@@ -269,7 +297,7 @@ pub struct EthGasLimit {
     pub erc20_receiver_spend: u64,
     /// Gas limit for swap refund tx with coins
     pub eth_sender_refund: u64,
-    /// Gas limit for swap refund tx with with ERC20 tokens
+    /// Gas limit for swap refund tx with ERC20 tokens
     pub erc20_sender_refund: u64,
     /// Gas limit for other operations
     pub eth_max_trade_gas: u64,
@@ -289,6 +317,83 @@ impl Default for EthGasLimit {
             eth_max_trade_gas: gas_limit::ETH_MAX_TRADE_GAS,
         }
     }
+}
+
+#[derive(Default, Deserialize)]
+#[serde(default)]
+pub struct EthGasLimitV2 {
+    pub maker: MakerGasLimitV2,
+    pub taker: TakerGasLimitV2,
+}
+
+#[derive(Deserialize)]
+#[serde(default)]
+pub struct MakerGasLimitV2 {
+    pub eth_send_payment: u64,
+    pub erc20_send_payment: u64,
+    pub eth_taker_spend: u64,
+    pub erc20_taker_spend: u64,
+    pub eth_maker_refund_timelock: u64,
+    pub erc20_maker_refund_timelock: u64,
+    pub eth_maker_refund_secret: u64,
+    pub erc20_maker_refund_secret: u64,
+}
+
+#[derive(Deserialize)]
+#[serde(default)]
+pub struct TakerGasLimitV2 {
+    pub eth_send_payment: u64,
+    pub erc20_send_payment: u64,
+    pub eth_maker_spend: u64,
+    pub erc20_maker_spend: u64,
+    pub eth_taker_refund_timelock: u64,
+    pub erc20_taker_refund_timelock: u64,
+    pub eth_taker_refund_secret: u64,
+    pub erc20_taker_refund_secret: u64,
+    pub approve_payment: u64,
+}
+
+impl Default for MakerGasLimitV2 {
+    fn default() -> Self {
+        MakerGasLimitV2 {
+            eth_send_payment: gas_limit_v2::maker::ETH_SEND_PAYMENT,
+            erc20_send_payment: gas_limit_v2::maker::ERC20_SEND_PAYMENT,
+            eth_taker_spend: gas_limit_v2::maker::ETH_TAKER_SPEND,
+            erc20_taker_spend: gas_limit_v2::maker::ERC20_TAKER_SPEND,
+            eth_maker_refund_timelock: gas_limit_v2::maker::ETH_MAKER_REFUND_TIMELOCK,
+            erc20_maker_refund_timelock: gas_limit_v2::maker::ERC20_MAKER_REFUND_TIMELOCK,
+            eth_maker_refund_secret: gas_limit_v2::maker::ETH_MAKER_REFUND_SECRET,
+            erc20_maker_refund_secret: gas_limit_v2::maker::ERC20_MAKER_REFUND_SECRET,
+        }
+    }
+}
+
+impl Default for TakerGasLimitV2 {
+    fn default() -> Self {
+        TakerGasLimitV2 {
+            eth_send_payment: gas_limit_v2::taker::ETH_SEND_PAYMENT,
+            erc20_send_payment: gas_limit_v2::taker::ERC20_SEND_PAYMENT,
+            eth_maker_spend: gas_limit_v2::taker::ETH_MAKER_SPEND,
+            erc20_maker_spend: gas_limit_v2::taker::ERC20_MAKER_SPEND,
+            eth_taker_refund_timelock: gas_limit_v2::taker::ETH_TAKER_REFUND_TIMELOCK,
+            erc20_taker_refund_timelock: gas_limit_v2::taker::ERC20_TAKER_REFUND_TIMELOCK,
+            eth_taker_refund_secret: gas_limit_v2::taker::ETH_TAKER_REFUND_SECRET,
+            erc20_taker_refund_secret: gas_limit_v2::taker::ERC20_TAKER_REFUND_SECRET,
+            approve_payment: gas_limit_v2::taker::APPROVE_PAYMENT,
+        }
+    }
+}
+
+trait ExtractGasLimit: Default + for<'de> Deserialize<'de> {
+    fn key() -> &'static str;
+}
+
+impl ExtractGasLimit for EthGasLimit {
+    fn key() -> &'static str { "gas_limit" }
+}
+
+impl ExtractGasLimit for EthGasLimitV2 {
+    fn key() -> &'static str { "gas_limit_v2" }
 }
 
 /// Max transaction type according to EIP-2718
@@ -681,6 +786,7 @@ pub struct EthCoinImpl {
     pub(crate) platform_fee_estimator_state: Arc<FeeEstimatorState>,
     /// Config provided gas limits for swap and send transactions
     pub(crate) gas_limit: EthGasLimit,
+    pub(crate) gas_limit_v2: EthGasLimitV2,
     /// This spawner is used to spawn coin's related futures that should be aborted on coin deactivation
     /// and on [`MmArc::stop`].
     pub abortable_system: AbortableQueue,
@@ -6386,7 +6492,8 @@ pub async fn eth_coin_from_conf_and_request(
 
     let platform_fee_estimator_state = FeeEstimatorState::init_fee_estimator(ctx, conf, &coin_type).await?;
     let max_eth_tx_type = get_max_eth_tx_type_conf(ctx, conf, &coin_type).await?;
-    let gas_limit = extract_gas_limit_from_conf(conf)?;
+    let gas_limit: EthGasLimit = extract_gas_limit_from_conf(conf)?;
+    let gas_limit_v2: EthGasLimitV2 = extract_gas_limit_from_conf(conf)?;
 
     let coin = EthCoinImpl {
         priv_key_policy: key_pair,
@@ -6413,6 +6520,7 @@ pub async fn eth_coin_from_conf_and_request(
         nfts_infos: Default::default(),
         platform_fee_estimator_state,
         gas_limit,
+        gas_limit_v2,
         abortable_system,
     };
 
@@ -7038,11 +7146,12 @@ pub fn pubkey_from_extended(extended_pubkey: &Secp256k1ExtendedPublicKey) -> Pub
     pubkey_uncompressed
 }
 
-fn extract_gas_limit_from_conf(coin_conf: &Json) -> Result<EthGasLimit, String> {
-    if coin_conf["gas_limit"].is_null() {
+fn extract_gas_limit_from_conf<T: ExtractGasLimit>(coin_conf: &Json) -> Result<T, String> {
+    let key = T::key();
+    if coin_conf[key].is_null() {
         Ok(Default::default())
     } else {
-        json::from_value(coin_conf["gas_limit"].clone()).map_err(|e| e.to_string())
+        json::from_value(coin_conf[key].clone()).map_err(|e| e.to_string())
     }
 }
 
@@ -7229,6 +7338,7 @@ impl EthCoin {
             nfts_infos: Arc::clone(&self.nfts_infos),
             platform_fee_estimator_state: Arc::clone(&self.platform_fee_estimator_state),
             gas_limit: EthGasLimit::default(),
+            gas_limit_v2: EthGasLimitV2::default(),
             abortable_system: self.abortable_system.create_subsystem().unwrap(),
         };
         EthCoin(Arc::new(coin))
