@@ -1198,9 +1198,8 @@ pub struct TestNftSwapInfo<Coin: ParseNftAssocTypes + ?Sized> {
     pub token_id: Vec<u8>,
     /// The type of smart contract that governs this NFT
     pub contract_type: Coin::ContractType,
-    /// Etomic swap contract address
-    pub swap_contract_address: Coin::ContractAddress,
 }
+
 struct NftActivationV2Args {
     swap_contract_address: Address,
     fallback_swap_contract_address: Address,
@@ -1268,7 +1267,6 @@ fn setup_test(
         token_address: token_contract,
         token_id,
         contract_type,
-        swap_contract_address: activation.swap_v2_contracts.nft_maker_swap_v2_contract,
     };
 
     NftTestSetup {
@@ -1288,7 +1286,6 @@ fn send_nft_maker_payment(setup: &NftTestSetup, amount: BigDecimal) -> SignedEth
         token_address: &setup.nft_swap_info.token_address,
         token_id: &setup.nft_swap_info.token_id,
         contract_type: &setup.nft_swap_info.contract_type,
-        swap_contract_address: &setup.nft_swap_info.swap_contract_address,
     };
     let send_payment_args = SendNftMakerPaymentArgs::<EthCoin> {
         time_lock: setup.time_lock,
@@ -1318,7 +1315,6 @@ fn validate_nft_maker_payment(setup: &NftTestSetup, maker_payment: &SignedEthTx,
         token_address: &setup.nft_swap_info.token_address,
         token_id: &setup.nft_swap_info.token_id,
         contract_type: &setup.nft_swap_info.contract_type,
-        swap_contract_address: &setup.nft_swap_info.swap_contract_address,
     };
     let validate_args = ValidateNftMakerPaymentArgs {
         maker_payment_tx: maker_payment,
@@ -1347,7 +1343,6 @@ fn spend_nft_maker_payment(
         maker_pub: &setup.maker_global_nft.derive_htlc_pubkey_v2(&[]),
         swap_unique_data: &[],
         contract_type,
-        swap_contract_address: &setup.nft_swap_info.swap_contract_address,
     };
     block_on(setup.taker_global_nft.spend_nft_maker_payment_v2(spend_payment_args)).unwrap()
 }
@@ -1365,7 +1360,6 @@ fn refund_nft_maker_payment(
         taker_secret: &setup.taker_secret,
         swap_unique_data: &[],
         contract_type,
-        swap_contract_address: &setup.nft_swap_info.swap_contract_address,
     };
     match refund_type {
         RefundType::Timelock => {
