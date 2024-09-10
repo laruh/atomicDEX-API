@@ -251,9 +251,9 @@ pub mod gas_limit {
     pub const ETH_MAX_TRADE_GAS: u64 = 150_000;
 }
 
-/// Gas limits for EthGasLimitV2
+/// Default gas limits for EthGasLimitV2
 pub mod gas_limit_v2 {
-    /// Gas limits for maker operations in EthGasLimitV2
+    /// Gas limits for maker operations in EtomicSwapMakerV2 contract
     pub mod maker {
         pub const ETH_SEND_PAYMENT: u64 = 65_000;
         pub const ERC20_SEND_PAYMENT: u64 = 115_000;
@@ -265,7 +265,7 @@ pub mod gas_limit_v2 {
         pub const ERC20_MAKER_REFUND_SECRET: u64 = 65_000;
     }
 
-    /// Gas limits for taker operations in EthGasLimitV2
+    /// Gas limits for taker operations in EtomicSwapTakerV2 contract
     pub mod taker {
         pub const ETH_SEND_PAYMENT: u64 = 65_000;
         pub const ERC20_SEND_PAYMENT: u64 = 115_000;
