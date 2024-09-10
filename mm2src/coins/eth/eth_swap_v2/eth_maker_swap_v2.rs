@@ -3,7 +3,7 @@ use crate::coin_errors::{ValidatePaymentError, ValidatePaymentResult};
 use crate::eth::{decode_contract_call, get_function_input_data, wei_from_big_decimal, EthCoin, EthCoinType,
                  MakerPaymentStateV2, SignedEthTx, MAKER_SWAP_V2};
 use crate::{ParseCoinAssocTypes, RefundMakerPaymentSecretArgs, RefundMakerPaymentTimelockArgs, SendMakerPaymentArgs,
-            SpendMakerPaymentArgs, SwapTxTypeWithSecretHash, Transaction, TransactionErr, ValidateMakerPaymentArgs,
+            SpendMakerPaymentArgs, SwapTxTypeWithSecretHash, TransactionErr, ValidateMakerPaymentArgs,
             WaitForPaymentSpendError};
 use common::executor::Timer;
 use common::now_sec;
@@ -82,28 +82,12 @@ impl EthCoin {
                 platform: _,
                 token_addr,
             } => {
-                let allowed = self
-                    .allowance(maker_swap_v2_contract)
-                    .compat()
-                    .await
-                    .map_err(|e| TransactionErr::Plain(ERRL!("{}", e)))?;
                 let data = try_tx_s!(
                     self.prepare_maker_erc20_payment_data(&payment_args, payment_amount, *token_addr)
                         .await
                 );
-                if allowed < payment_amount {
-                    let approved_tx = self.approve(maker_swap_v2_contract, U256::max_value()).compat().await?;
-                    self.wait_for_required_allowance(maker_swap_v2_contract, payment_amount, args.time_lock)
-                        .compat()
-                        .await
-                        .map_err(|e| {
-                            TransactionErr::Plain(ERRL!(
-                                "Allowed value was not updated in time after sending approve transaction {:02x}: {}",
-                                approved_tx.tx_hash_as_bytes(),
-                                e
-                            ))
-                        })?;
-                }
+                self.handle_allowance(maker_swap_v2_contract, payment_amount, args.time_lock)
+                    .await?;
                 self.sign_and_send_transaction(
                     U256::from(ZERO_VALUE),
                     Action::Call(maker_swap_v2_contract),

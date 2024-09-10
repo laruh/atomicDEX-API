@@ -2,8 +2,8 @@ use super::{check_decoded_length, validate_from_to_and_status, validate_payment_
             EthPaymentType, PrepareTxDataError, ZERO_VALUE};
 use crate::eth::{decode_contract_call, get_function_input_data, wei_from_big_decimal, EthCoin, EthCoinType,
                  ParseCoinAssocTypes, RefundFundingSecretArgs, RefundTakerPaymentArgs, SendTakerFundingArgs,
-                 SignedEthTx, SwapTxTypeWithSecretHash, TakerPaymentStateV2, Transaction, TransactionErr,
-                 ValidateSwapV2TxError, ValidateSwapV2TxResult, ValidateTakerFundingArgs, TAKER_SWAP_V2};
+                 SignedEthTx, SwapTxTypeWithSecretHash, TakerPaymentStateV2, TransactionErr, ValidateSwapV2TxError,
+                 ValidateSwapV2TxResult, ValidateTakerFundingArgs, TAKER_SWAP_V2};
 use crate::{FundingTxSpend, GenTakerFundingSpendArgs, GenTakerPaymentSpendArgs, SearchForFundingSpendErr,
             WaitForPaymentSpendError};
 use common::executor::Timer;
@@ -40,6 +40,17 @@ struct TakerRefundArgs {
     maker_secret_hash: [u8; 32],
     payment_time_lock: u64,
     token_address: Address,
+}
+
+struct TakerValidationArgs<'a> {
+    swap_id: Vec<u8>,
+    amount: U256,
+    dex_fee: U256,
+    receiver: Address,
+    taker_secret_hash: &'a [u8],
+    maker_secret_hash: &'a [u8],
+    funding_time_lock: u64,
+    payment_time_lock: u64,
 }
 
 impl EthCoin {
@@ -92,25 +103,9 @@ impl EthCoin {
                 platform: _,
                 token_addr,
             } => {
-                let allowed = self
-                    .allowance(taker_swap_v2_contract)
-                    .compat()
-                    .await
-                    .map_err(|e| TransactionErr::Plain(ERRL!("{}", e)))?;
                 let data = try_tx_s!(self.prepare_taker_erc20_funding_data(&funding_args, *token_addr).await);
-                if allowed < payment_amount {
-                    let approved_tx = self.approve(taker_swap_v2_contract, U256::max_value()).compat().await?;
-                    self.wait_for_required_allowance(taker_swap_v2_contract, payment_amount, args.funding_time_lock)
-                        .compat()
-                        .await
-                        .map_err(|e| {
-                            TransactionErr::Plain(ERRL!(
-                                "Allowed value was not updated in time after sending approve transaction {:02x}: {}",
-                                approved_tx.tx_hash_as_bytes(),
-                                e
-                            ))
-                        })?;
-                }
+                self.handle_allowance(taker_swap_v2_contract, payment_amount, args.funding_time_lock)
+                    .await?;
                 self.sign_and_send_transaction(
                     U256::from(ZERO_VALUE),
                     Action::Call(taker_swap_v2_contract),
@@ -681,17 +676,6 @@ impl EthCoin {
 
         Ok((decoded, taker_swap_v2_contract))
     }
-}
-
-struct TakerValidationArgs<'a> {
-    swap_id: Vec<u8>,
-    amount: U256,
-    dex_fee: U256,
-    receiver: Address,
-    taker_secret_hash: &'a [u8],
-    maker_secret_hash: &'a [u8],
-    funding_time_lock: u64,
-    payment_time_lock: u64,
 }
 
 /// Validation function for ETH taker payment data

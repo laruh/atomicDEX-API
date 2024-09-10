@@ -1,9 +1,9 @@
-use crate::eth::EthCoin;
-use crate::ParseCoinAssocTypes;
+use crate::eth::{EthCoin, ParseCoinAssocTypes, Transaction, TransactionErr};
 use enum_derives::EnumFromStringify;
 use ethabi::{Contract, Token};
 use ethcore_transaction::SignedTransaction as SignedEthTx;
 use ethereum_types::{Address, U256};
+use futures::compat::Future01CompatExt;
 use mm2_err_handle::mm_error::MmError;
 use mm2_number::BigDecimal;
 use web3::types::Transaction as Web3Tx;
@@ -168,4 +168,34 @@ fn check_decoded_length(decoded: &Vec<Token>, expected_len: usize) -> Result<(),
         )));
     }
     Ok(())
+}
+
+impl EthCoin {
+    async fn handle_allowance(
+        &self,
+        swap_contract: Address,
+        payment_amount: U256,
+        time_lock: u64,
+    ) -> Result<(), TransactionErr> {
+        let allowed = self
+            .allowance(swap_contract)
+            .compat()
+            .await
+            .map_err(|e| TransactionErr::Plain(ERRL!("{}", e)))?;
+
+        if allowed < payment_amount {
+            let approved_tx = self.approve(swap_contract, U256::max_value()).compat().await?;
+            self.wait_for_required_allowance(swap_contract, payment_amount, time_lock)
+                .compat()
+                .await
+                .map_err(|e| {
+                    TransactionErr::Plain(ERRL!(
+                        "Allowed value was not updated in time after sending approve transaction {:02x}: {}",
+                        approved_tx.tx_hash_as_bytes(),
+                        e
+                    ))
+                })?;
+        }
+        Ok(())
+    }
 }
