@@ -37,11 +37,15 @@ impl EthCoin {
                 let htlc_data = try_tx_s!(self.prepare_htlc_data(&args));
 
                 let data = try_tx_s!(self.prepare_nft_maker_payment_v2_data(&args, htlc_data).await);
+                let gas_limit = match args.nft_swap_info.contract_type {
+                    ContractType::Erc1155 => self.gas_limit_v2.nft_maker.erc1155_send_payment,
+                    ContractType::Erc721 => self.gas_limit_v2.nft_maker.erc721_send_payment,
+                };
                 self.sign_and_send_transaction(
                     ZERO_VALUE.into(),
                     Action::Call(*args.nft_swap_info.token_address),
                     data,
-                    U256::from(self.gas_limit.eth_max_trade_gas), // TODO: fix to a more accurate const or estimated value
+                    U256::from(gas_limit),
                 )
                 .compat()
                 .await
@@ -173,11 +177,15 @@ impl EthCoin {
                     .await
                 );
                 let data = try_tx_s!(self.prepare_spend_nft_maker_v2_data(&args, decoded, htlc_params, state));
+                let gas_limit = match args.contract_type {
+                    ContractType::Erc1155 => self.gas_limit_v2.nft_maker.erc1155_taker_spend,
+                    ContractType::Erc721 => self.gas_limit_v2.nft_maker.erc721_taker_spend,
+                };
                 self.sign_and_send_transaction(
                     ZERO_VALUE.into(),
                     Action::Call(nft_maker_swap_v2_contract),
                     data,
-                    U256::from(self.gas_limit.eth_max_trade_gas), // TODO: fix to a more accurate const or estimated value
+                    U256::from(gas_limit),
                 )
                 .compat()
                 .await
@@ -219,11 +227,15 @@ impl EthCoin {
                 );
                 let data =
                     try_tx_s!(self.prepare_refund_nft_maker_payment_v2_timelock(&args, decoded, htlc_params, state));
+                let gas_limit = match args.contract_type {
+                    ContractType::Erc1155 => self.gas_limit_v2.nft_maker.erc1155_maker_refund_timelock,
+                    ContractType::Erc721 => self.gas_limit_v2.nft_maker.erc721_maker_refund_timelock,
+                };
                 self.sign_and_send_transaction(
                     ZERO_VALUE.into(),
                     Action::Call(nft_maker_swap_v2_contract),
                     data,
-                    U256::from(self.gas_limit.eth_max_trade_gas), // TODO: fix to a more accurate const or estimated value
+                    U256::from(gas_limit),
                 )
                 .compat()
                 .await
@@ -266,11 +278,15 @@ impl EthCoin {
 
                 let data =
                     try_tx_s!(self.prepare_refund_nft_maker_payment_v2_secret(&args, decoded, htlc_params, state));
+                let gas_limit = match args.contract_type {
+                    ContractType::Erc1155 => self.gas_limit_v2.nft_maker.erc1155_maker_refund_secret,
+                    ContractType::Erc721 => self.gas_limit_v2.nft_maker.erc721_maker_refund_secret,
+                };
                 self.sign_and_send_transaction(
                     ZERO_VALUE.into(),
                     Action::Call(nft_maker_swap_v2_contract),
                     data,
-                    U256::from(self.gas_limit.eth_max_trade_gas), // TODO: fix to a more accurate const or estimated value
+                    U256::from(gas_limit),
                 )
                 .compat()
                 .await

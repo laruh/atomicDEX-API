@@ -269,13 +269,24 @@ pub mod gas_limit_v2 {
     pub mod taker {
         pub const ETH_SEND_PAYMENT: u64 = 65_000;
         pub const ERC20_SEND_PAYMENT: u64 = 115_000;
-        pub const ETH_MAKER_SPEND: u64 = 65_000;
+        pub const ETH_MAKER_SPEND: u64 = 100_000;
         pub const ERC20_MAKER_SPEND: u64 = 115_000;
         pub const ETH_TAKER_REFUND_TIMELOCK: u64 = 65_000;
         pub const ERC20_TAKER_REFUND_TIMELOCK: u64 = 70_000;
         pub const ETH_TAKER_REFUND_SECRET: u64 = 65_000;
         pub const ERC20_TAKER_REFUND_SECRET: u64 = 70_000;
         pub const APPROVE_PAYMENT: u64 = 50_000;
+    }
+
+    pub mod nft_maker {
+        pub const ERC721_SEND_PAYMENT: u64 = 130_000;
+        pub const ERC1155_SEND_PAYMENT: u64 = 130_000;
+        pub const ERC721_TAKER_SPEND: u64 = 100_000;
+        pub const ERC1155_TAKER_SPEND: u64 = 100_000;
+        pub const ERC721_MAKER_REFUND_TIMELOCK: u64 = 100_000;
+        pub const ERC1155_MAKER_REFUND_TIMELOCK: u64 = 100_000;
+        pub const ERC721_MAKER_REFUND_SECRET: u64 = 100_000;
+        pub const ERC1155_MAKER_REFUND_SECRET: u64 = 100_000;
     }
 }
 
@@ -324,6 +335,7 @@ impl Default for EthGasLimit {
 pub struct EthGasLimitV2 {
     pub maker: MakerGasLimitV2,
     pub taker: TakerGasLimitV2,
+    pub nft_maker: NftMakerGasLimitV2,
 }
 
 #[derive(Deserialize)]
@@ -353,6 +365,19 @@ pub struct TakerGasLimitV2 {
     pub approve_payment: u64,
 }
 
+#[derive(Deserialize)]
+#[serde(default)]
+pub struct NftMakerGasLimitV2 {
+    pub erc721_send_payment: u64,
+    pub erc1155_send_payment: u64,
+    pub erc721_taker_spend: u64,
+    pub erc1155_taker_spend: u64,
+    pub erc721_maker_refund_timelock: u64,
+    pub erc1155_maker_refund_timelock: u64,
+    pub erc721_maker_refund_secret: u64,
+    pub erc1155_maker_refund_secret: u64,
+}
+
 impl Default for MakerGasLimitV2 {
     fn default() -> Self {
         MakerGasLimitV2 {
@@ -380,6 +405,21 @@ impl Default for TakerGasLimitV2 {
             eth_taker_refund_secret: gas_limit_v2::taker::ETH_TAKER_REFUND_SECRET,
             erc20_taker_refund_secret: gas_limit_v2::taker::ERC20_TAKER_REFUND_SECRET,
             approve_payment: gas_limit_v2::taker::APPROVE_PAYMENT,
+        }
+    }
+}
+
+impl Default for NftMakerGasLimitV2 {
+    fn default() -> Self {
+        NftMakerGasLimitV2 {
+            erc721_send_payment: gas_limit_v2::nft_maker::ERC721_SEND_PAYMENT,
+            erc1155_send_payment: gas_limit_v2::nft_maker::ERC1155_SEND_PAYMENT,
+            erc721_taker_spend: gas_limit_v2::nft_maker::ERC721_TAKER_SPEND,
+            erc1155_taker_spend: gas_limit_v2::nft_maker::ERC1155_TAKER_SPEND,
+            erc721_maker_refund_timelock: gas_limit_v2::nft_maker::ERC721_MAKER_REFUND_TIMELOCK,
+            erc1155_maker_refund_timelock: gas_limit_v2::nft_maker::ERC1155_MAKER_REFUND_TIMELOCK,
+            erc721_maker_refund_secret: gas_limit_v2::nft_maker::ERC721_MAKER_REFUND_SECRET,
+            erc1155_maker_refund_secret: gas_limit_v2::nft_maker::ERC1155_MAKER_REFUND_SECRET,
         }
     }
 }
