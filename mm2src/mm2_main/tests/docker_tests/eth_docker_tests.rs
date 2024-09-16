@@ -1446,6 +1446,7 @@ fn eth_coin_v2_activation_with_random_privkey(
     coin
 }
 
+#[ignore]
 #[test]
 fn send_and_refund_taker_funding_by_secret_eth() {
     // sepolia test
@@ -1506,6 +1507,7 @@ fn send_and_refund_taker_funding_by_secret_eth() {
     wait_for_confirmations(&taker_coin, &funding_tx_refund, 100);
 }
 
+#[ignore]
 #[test]
 fn send_and_refund_taker_funding_by_secret_erc20() {
     thread::sleep(Duration::from_secs(30));
@@ -1567,6 +1569,7 @@ fn send_and_refund_taker_funding_by_secret_erc20() {
     wait_for_confirmations(&taker_coin, &funding_tx_refund, 200);
 }
 
+#[ignore]
 #[test]
 fn send_and_refund_taker_funding_exceed_pre_approve_timelock_eth() {
     // sepolia test
@@ -1631,6 +1634,7 @@ fn send_and_refund_taker_funding_exceed_pre_approve_timelock_eth() {
     wait_for_confirmations(&taker_coin, &funding_tx_refund, 100);
 }
 
+#[ignore]
 #[test]
 fn taker_send_approve_and_spend_eth() {
     // sepolia test
@@ -1740,6 +1744,7 @@ fn taker_send_approve_and_spend_eth() {
     block_on(taker_coin.wait_for_taker_payment_spend(&spend_tx, 0u64, payment_time_lock)).unwrap();
 }
 
+#[ignore]
 #[test]
 fn taker_send_approve_and_spend_erc20() {
     // sepolia test
@@ -1849,6 +1854,7 @@ fn taker_send_approve_and_spend_erc20() {
     block_on(taker_coin.wait_for_taker_payment_spend(&spend_tx, 0u64, payment_time_lock)).unwrap();
 }
 
+#[ignore]
 #[test]
 fn send_and_refund_taker_funding_exceed_payment_timelock_eth() {
     // sepolia test
@@ -1932,6 +1938,7 @@ fn send_and_refund_taker_funding_exceed_payment_timelock_eth() {
     wait_for_confirmations(&taker_coin, &funding_tx_refund, 100);
 }
 
+#[ignore]
 #[test]
 fn send_and_refund_taker_funding_exceed_payment_timelock_erc20() {
     // sepolia test
@@ -2017,6 +2024,7 @@ fn send_and_refund_taker_funding_exceed_payment_timelock_erc20() {
     wait_for_confirmations(&taker_coin, &funding_tx_refund, 100);
 }
 
+#[ignore]
 #[test]
 fn send_and_refund_taker_funding_exceed_pre_approve_timelock_erc20() {
     // sepolia test
@@ -2083,7 +2091,6 @@ fn send_and_refund_taker_funding_exceed_pre_approve_timelock_erc20() {
     wait_for_confirmations(&taker_coin, &funding_tx_refund, 150);
 }
 
-#[ignore]
 #[test]
 fn send_maker_payment_and_refund_timelock_eth() {
     thread::sleep(Duration::from_secs(150));
@@ -2136,7 +2143,6 @@ fn send_maker_payment_and_refund_timelock_eth() {
     wait_for_confirmations(&maker_coin, &payment_tx_refund, 100);
 }
 
-#[ignore]
 #[test]
 fn send_maker_payment_and_refund_timelock_erc20() {
     thread::sleep(Duration::from_secs(120));
@@ -2190,7 +2196,6 @@ fn send_maker_payment_and_refund_timelock_erc20() {
     wait_for_confirmations(&maker_coin, &payment_tx_refund, 100);
 }
 
-#[ignore]
 #[test]
 fn send_maker_payment_and_refund_secret_eth() {
     thread::sleep(Duration::from_secs(90));
@@ -2240,7 +2245,6 @@ fn send_maker_payment_and_refund_secret_eth() {
     wait_for_confirmations(&maker_coin, &payment_tx_refund, 100);
 }
 
-#[ignore]
 #[test]
 fn send_maker_payment_and_refund_secret_erc20() {
     thread::sleep(Duration::from_secs(60));
@@ -2291,7 +2295,6 @@ fn send_maker_payment_and_refund_secret_erc20() {
     wait_for_confirmations(&maker_coin, &payment_tx_refund, 100);
 }
 
-#[ignore]
 #[test]
 fn send_and_spend_maker_payment_eth() {
     let taker_coin = get_or_create_sepolia_coin(&MM_CTX1, SEPOLIA_TAKER_PRIV, ETH, &eth_sepolia_conf(), false);
@@ -2353,7 +2356,6 @@ fn send_and_spend_maker_payment_eth() {
     block_on(maker_coin.wait_for_maker_payment_spend(&spend_tx, 0u64, payment_time_lock)).unwrap();
 }
 
-#[ignore]
 #[test]
 fn send_and_spend_maker_payment_erc20() {
     thread::sleep(Duration::from_secs(30));

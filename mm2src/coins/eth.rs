@@ -255,8 +255,8 @@ pub mod gas_limit {
 pub mod gas_limit_v2 {
     /// Gas limits for maker operations in EtomicSwapMakerV2 contract
     pub mod maker {
-        pub const ETH_SEND_PAYMENT: u64 = 65_000;
-        pub const ERC20_SEND_PAYMENT: u64 = 115_000;
+        pub const ETH_PAYMENT: u64 = 65_000;
+        pub const ERC20_PAYMENT: u64 = 115_000;
         pub const ETH_TAKER_SPEND: u64 = 65_000;
         pub const ERC20_TAKER_SPEND: u64 = 65_000;
         pub const ETH_MAKER_REFUND_TIMELOCK: u64 = 65_000;
@@ -267,8 +267,8 @@ pub mod gas_limit_v2 {
 
     /// Gas limits for taker operations in EtomicSwapTakerV2 contract
     pub mod taker {
-        pub const ETH_SEND_PAYMENT: u64 = 65_000;
-        pub const ERC20_SEND_PAYMENT: u64 = 115_000;
+        pub const ETH_PAYMENT: u64 = 65_000;
+        pub const ERC20_PAYMENT: u64 = 115_000;
         pub const ETH_MAKER_SPEND: u64 = 100_000;
         pub const ERC20_MAKER_SPEND: u64 = 115_000;
         pub const ETH_TAKER_REFUND_TIMELOCK: u64 = 65_000;
@@ -279,8 +279,8 @@ pub mod gas_limit_v2 {
     }
 
     pub mod nft_maker {
-        pub const ERC721_SEND_PAYMENT: u64 = 130_000;
-        pub const ERC1155_SEND_PAYMENT: u64 = 130_000;
+        pub const ERC721_PAYMENT: u64 = 130_000;
+        pub const ERC1155_PAYMENT: u64 = 130_000;
         pub const ERC721_TAKER_SPEND: u64 = 100_000;
         pub const ERC1155_TAKER_SPEND: u64 = 100_000;
         pub const ERC721_MAKER_REFUND_TIMELOCK: u64 = 100_000;
@@ -341,8 +341,8 @@ pub struct EthGasLimitV2 {
 #[derive(Deserialize)]
 #[serde(default)]
 pub struct MakerGasLimitV2 {
-    pub eth_send_payment: u64,
-    pub erc20_send_payment: u64,
+    pub eth_payment: u64,
+    pub erc20_payment: u64,
     pub eth_taker_spend: u64,
     pub erc20_taker_spend: u64,
     pub eth_maker_refund_timelock: u64,
@@ -354,8 +354,8 @@ pub struct MakerGasLimitV2 {
 #[derive(Deserialize)]
 #[serde(default)]
 pub struct TakerGasLimitV2 {
-    pub eth_send_payment: u64,
-    pub erc20_send_payment: u64,
+    pub eth_payment: u64,
+    pub erc20_payment: u64,
     pub eth_maker_spend: u64,
     pub erc20_maker_spend: u64,
     pub eth_taker_refund_timelock: u64,
@@ -368,8 +368,8 @@ pub struct TakerGasLimitV2 {
 #[derive(Deserialize)]
 #[serde(default)]
 pub struct NftMakerGasLimitV2 {
-    pub erc721_send_payment: u64,
-    pub erc1155_send_payment: u64,
+    pub erc721_payment: u64,
+    pub erc1155_payment: u64,
     pub erc721_taker_spend: u64,
     pub erc1155_taker_spend: u64,
     pub erc721_maker_refund_timelock: u64,
@@ -381,8 +381,8 @@ pub struct NftMakerGasLimitV2 {
 impl Default for MakerGasLimitV2 {
     fn default() -> Self {
         MakerGasLimitV2 {
-            eth_send_payment: gas_limit_v2::maker::ETH_SEND_PAYMENT,
-            erc20_send_payment: gas_limit_v2::maker::ERC20_SEND_PAYMENT,
+            eth_payment: gas_limit_v2::maker::ETH_PAYMENT,
+            erc20_payment: gas_limit_v2::maker::ERC20_PAYMENT,
             eth_taker_spend: gas_limit_v2::maker::ETH_TAKER_SPEND,
             erc20_taker_spend: gas_limit_v2::maker::ERC20_TAKER_SPEND,
             eth_maker_refund_timelock: gas_limit_v2::maker::ETH_MAKER_REFUND_TIMELOCK,
@@ -396,8 +396,8 @@ impl Default for MakerGasLimitV2 {
 impl Default for TakerGasLimitV2 {
     fn default() -> Self {
         TakerGasLimitV2 {
-            eth_send_payment: gas_limit_v2::taker::ETH_SEND_PAYMENT,
-            erc20_send_payment: gas_limit_v2::taker::ERC20_SEND_PAYMENT,
+            eth_payment: gas_limit_v2::taker::ETH_PAYMENT,
+            erc20_payment: gas_limit_v2::taker::ERC20_PAYMENT,
             eth_maker_spend: gas_limit_v2::taker::ETH_MAKER_SPEND,
             erc20_maker_spend: gas_limit_v2::taker::ERC20_MAKER_SPEND,
             eth_taker_refund_timelock: gas_limit_v2::taker::ETH_TAKER_REFUND_TIMELOCK,
@@ -412,8 +412,8 @@ impl Default for TakerGasLimitV2 {
 impl Default for NftMakerGasLimitV2 {
     fn default() -> Self {
         NftMakerGasLimitV2 {
-            erc721_send_payment: gas_limit_v2::nft_maker::ERC721_SEND_PAYMENT,
-            erc1155_send_payment: gas_limit_v2::nft_maker::ERC1155_SEND_PAYMENT,
+            erc721_payment: gas_limit_v2::nft_maker::ERC721_PAYMENT,
+            erc1155_payment: gas_limit_v2::nft_maker::ERC1155_PAYMENT,
             erc721_taker_spend: gas_limit_v2::nft_maker::ERC721_TAKER_SPEND,
             erc1155_taker_spend: gas_limit_v2::nft_maker::ERC1155_TAKER_SPEND,
             erc721_maker_refund_timelock: gas_limit_v2::nft_maker::ERC721_MAKER_REFUND_TIMELOCK,

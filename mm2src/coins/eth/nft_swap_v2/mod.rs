@@ -38,8 +38,8 @@ impl EthCoin {
 
                 let data = try_tx_s!(self.prepare_nft_maker_payment_v2_data(&args, htlc_data).await);
                 let gas_limit = match args.nft_swap_info.contract_type {
-                    ContractType::Erc1155 => self.gas_limit_v2.nft_maker.erc1155_send_payment,
-                    ContractType::Erc721 => self.gas_limit_v2.nft_maker.erc721_send_payment,
+                    ContractType::Erc1155 => self.gas_limit_v2.nft_maker.erc1155_payment,
+                    ContractType::Erc721 => self.gas_limit_v2.nft_maker.erc721_payment,
                 };
                 self.sign_and_send_transaction(
                     ZERO_VALUE.into(),
