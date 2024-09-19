@@ -4,7 +4,8 @@ use super::docker_tests_common::{random_secp256k1_secret, ERC1155_TEST_ABI, ERC7
                                  GETH_TAKER_SWAP_V2, GETH_WATCHERS_SWAP_CONTRACT, GETH_WEB3, MM_CTX, MM_CTX1};
 #[cfg(any(feature = "sepolia-maker-swap-v2-tests", feature = "sepolia-taker-swap-v2-tests"))]
 use super::docker_tests_common::{SEPOLIA_ERC20_CONTRACT, SEPOLIA_ETOMIC_MAKER_NFT_SWAP_V2, SEPOLIA_MAKER_SWAP_V2,
-                                 SEPOLIA_NONCE_LOCK, SEPOLIA_RPC_URL, SEPOLIA_TAKER_SWAP_V2, SEPOLIA_WEB3};
+                                 SEPOLIA_NONCE_LOCK, SEPOLIA_RPC_URL, SEPOLIA_TAKER_SWAP_V2, SEPOLIA_TESTS_LOCK,
+                                 SEPOLIA_WEB3};
 use crate::common::Future01CompatExt;
 use bitcrypto::{dhash160, sha256};
 use coins::eth::gas_limit::ETH_MAX_TRADE_GAS;
@@ -1468,7 +1469,8 @@ fn eth_coin_v2_activation_with_random_privkey(
 #[cfg(feature = "sepolia-taker-swap-v2-tests")]
 #[test]
 fn send_and_refund_taker_funding_by_secret_eth() {
-    // sepolia test
+    let _guard = SEPOLIA_TESTS_LOCK.lock().unwrap();
+
     let taker_coin = get_or_create_sepolia_coin(&MM_CTX1, SEPOLIA_TAKER_PRIV, ETH, &eth_sepolia_conf(), false);
     let maker_coin = get_or_create_sepolia_coin(&MM_CTX, SEPOLIA_MAKER_PRIV, ETH, &eth_sepolia_conf(), false);
 
@@ -1529,7 +1531,8 @@ fn send_and_refund_taker_funding_by_secret_eth() {
 #[cfg(feature = "sepolia-taker-swap-v2-tests")]
 #[test]
 fn send_and_refund_taker_funding_by_secret_erc20() {
-    thread::sleep(Duration::from_secs(30));
+    let _guard = SEPOLIA_TESTS_LOCK.lock().unwrap();
+
     let erc20_conf = &sepolia_erc20_dev_conf(&sepolia_erc20_contract_checksum());
     let taker_coin = get_or_create_sepolia_coin(&MM_CTX1, SEPOLIA_TAKER_PRIV, ERC20, erc20_conf, true);
     let maker_coin = get_or_create_sepolia_coin(&MM_CTX1, SEPOLIA_MAKER_PRIV, ERC20, erc20_conf, true);
@@ -1591,8 +1594,8 @@ fn send_and_refund_taker_funding_by_secret_erc20() {
 #[cfg(feature = "sepolia-taker-swap-v2-tests")]
 #[test]
 fn send_and_refund_taker_funding_exceed_pre_approve_timelock_eth() {
-    // sepolia test
-    thread::sleep(Duration::from_secs(60));
+    let _guard = SEPOLIA_TESTS_LOCK.lock().unwrap();
+
     let taker_coin = get_or_create_sepolia_coin(&MM_CTX1, SEPOLIA_TAKER_PRIV, ETH, &eth_sepolia_conf(), false);
     let maker_coin = get_or_create_sepolia_coin(&MM_CTX, SEPOLIA_MAKER_PRIV, ETH, &eth_sepolia_conf(), false);
 
@@ -1656,8 +1659,8 @@ fn send_and_refund_taker_funding_exceed_pre_approve_timelock_eth() {
 #[cfg(feature = "sepolia-taker-swap-v2-tests")]
 #[test]
 fn taker_send_approve_and_spend_eth() {
-    // sepolia test
-    thread::sleep(Duration::from_secs(100));
+    let _guard = SEPOLIA_TESTS_LOCK.lock().unwrap();
+
     let taker_coin = get_or_create_sepolia_coin(&MM_CTX1, SEPOLIA_TAKER_PRIV, ETH, &eth_sepolia_conf(), false);
     let maker_coin = get_or_create_sepolia_coin(&MM_CTX, SEPOLIA_MAKER_PRIV, ETH, &eth_sepolia_conf(), false);
 
@@ -1766,8 +1769,8 @@ fn taker_send_approve_and_spend_eth() {
 #[cfg(feature = "sepolia-taker-swap-v2-tests")]
 #[test]
 fn taker_send_approve_and_spend_erc20() {
-    // sepolia test
-    thread::sleep(Duration::from_secs(130));
+    let _guard = SEPOLIA_TESTS_LOCK.lock().unwrap();
+
     let erc20_conf = &sepolia_erc20_dev_conf(&sepolia_erc20_contract_checksum());
     let taker_coin = get_or_create_sepolia_coin(&MM_CTX1, SEPOLIA_TAKER_PRIV, ERC20, erc20_conf, true);
     let maker_coin = get_or_create_sepolia_coin(&MM_CTX, SEPOLIA_MAKER_PRIV, ERC20, erc20_conf, true);
@@ -1876,8 +1879,8 @@ fn taker_send_approve_and_spend_erc20() {
 #[cfg(feature = "sepolia-taker-swap-v2-tests")]
 #[test]
 fn send_and_refund_taker_funding_exceed_payment_timelock_eth() {
-    // sepolia test
-    thread::sleep(Duration::from_secs(160));
+    let _guard = SEPOLIA_TESTS_LOCK.lock().unwrap();
+
     let taker_coin = get_or_create_sepolia_coin(&MM_CTX1, SEPOLIA_TAKER_PRIV, ETH, &eth_sepolia_conf(), false);
     let maker_coin = get_or_create_sepolia_coin(&MM_CTX, SEPOLIA_MAKER_PRIV, ETH, &eth_sepolia_conf(), false);
 
@@ -1960,8 +1963,8 @@ fn send_and_refund_taker_funding_exceed_payment_timelock_eth() {
 #[cfg(feature = "sepolia-taker-swap-v2-tests")]
 #[test]
 fn send_and_refund_taker_funding_exceed_payment_timelock_erc20() {
-    // sepolia test
-    thread::sleep(Duration::from_secs(190));
+    let _guard = SEPOLIA_TESTS_LOCK.lock().unwrap();
+
     let erc20_conf = &sepolia_erc20_dev_conf(&sepolia_erc20_contract_checksum());
     let taker_coin = get_or_create_sepolia_coin(&MM_CTX1, SEPOLIA_TAKER_PRIV, ERC20, erc20_conf, true);
     let maker_coin = get_or_create_sepolia_coin(&MM_CTX, SEPOLIA_MAKER_PRIV, ERC20, erc20_conf, true);
@@ -2046,8 +2049,8 @@ fn send_and_refund_taker_funding_exceed_payment_timelock_erc20() {
 #[cfg(feature = "sepolia-taker-swap-v2-tests")]
 #[test]
 fn send_and_refund_taker_funding_exceed_pre_approve_timelock_erc20() {
-    // sepolia test
-    thread::sleep(Duration::from_secs(220));
+    let _guard = SEPOLIA_TESTS_LOCK.lock().unwrap();
+
     let erc20_conf = &sepolia_erc20_dev_conf(&sepolia_erc20_contract_checksum());
     let taker_coin = get_or_create_sepolia_coin(&MM_CTX1, SEPOLIA_TAKER_PRIV, ERC20, erc20_conf, true);
     let maker_coin = get_or_create_sepolia_coin(&MM_CTX1, SEPOLIA_MAKER_PRIV, ERC20, erc20_conf, true);
@@ -2113,7 +2116,8 @@ fn send_and_refund_taker_funding_exceed_pre_approve_timelock_erc20() {
 #[cfg(feature = "sepolia-maker-swap-v2-tests")]
 #[test]
 fn send_maker_payment_and_refund_timelock_eth() {
-    thread::sleep(Duration::from_secs(150));
+    let _guard = SEPOLIA_TESTS_LOCK.lock().unwrap();
+
     let taker_coin = get_or_create_sepolia_coin(&MM_CTX1, SEPOLIA_TAKER_PRIV, ETH, &eth_sepolia_conf(), false);
     let maker_coin = get_or_create_sepolia_coin(&MM_CTX, SEPOLIA_MAKER_PRIV, ETH, &eth_sepolia_conf(), false);
 
@@ -2166,7 +2170,8 @@ fn send_maker_payment_and_refund_timelock_eth() {
 #[cfg(feature = "sepolia-maker-swap-v2-tests")]
 #[test]
 fn send_maker_payment_and_refund_timelock_erc20() {
-    thread::sleep(Duration::from_secs(120));
+    let _guard = SEPOLIA_TESTS_LOCK.lock().unwrap();
+
     let erc20_conf = &sepolia_erc20_dev_conf(&sepolia_erc20_contract_checksum());
     let taker_coin = get_or_create_sepolia_coin(&MM_CTX1, SEPOLIA_TAKER_PRIV, ERC20, erc20_conf, true);
     let maker_coin = get_or_create_sepolia_coin(&MM_CTX, SEPOLIA_MAKER_PRIV, ERC20, erc20_conf, true);
@@ -2220,7 +2225,8 @@ fn send_maker_payment_and_refund_timelock_erc20() {
 #[cfg(feature = "sepolia-maker-swap-v2-tests")]
 #[test]
 fn send_maker_payment_and_refund_secret_eth() {
-    thread::sleep(Duration::from_secs(90));
+    let _guard = SEPOLIA_TESTS_LOCK.lock().unwrap();
+
     let taker_coin = get_or_create_sepolia_coin(&MM_CTX1, SEPOLIA_TAKER_PRIV, ETH, &eth_sepolia_conf(), false);
     let maker_coin = get_or_create_sepolia_coin(&MM_CTX, SEPOLIA_MAKER_PRIV, ETH, &eth_sepolia_conf(), false);
 
@@ -2270,7 +2276,8 @@ fn send_maker_payment_and_refund_secret_eth() {
 #[cfg(feature = "sepolia-maker-swap-v2-tests")]
 #[test]
 fn send_maker_payment_and_refund_secret_erc20() {
-    thread::sleep(Duration::from_secs(60));
+    let _guard = SEPOLIA_TESTS_LOCK.lock().unwrap();
+
     let erc20_conf = &sepolia_erc20_dev_conf(&sepolia_erc20_contract_checksum());
     let taker_coin = get_or_create_sepolia_coin(&MM_CTX1, SEPOLIA_TAKER_PRIV, ERC20, erc20_conf, true);
     let maker_coin = get_or_create_sepolia_coin(&MM_CTX, SEPOLIA_MAKER_PRIV, ERC20, erc20_conf, true);
@@ -2321,6 +2328,8 @@ fn send_maker_payment_and_refund_secret_erc20() {
 #[cfg(feature = "sepolia-maker-swap-v2-tests")]
 #[test]
 fn send_and_spend_maker_payment_eth() {
+    let _guard = SEPOLIA_TESTS_LOCK.lock().unwrap();
+
     let taker_coin = get_or_create_sepolia_coin(&MM_CTX1, SEPOLIA_TAKER_PRIV, ETH, &eth_sepolia_conf(), false);
     let maker_coin = get_or_create_sepolia_coin(&MM_CTX, SEPOLIA_MAKER_PRIV, ETH, &eth_sepolia_conf(), false);
 
@@ -2383,7 +2392,8 @@ fn send_and_spend_maker_payment_eth() {
 #[cfg(feature = "sepolia-maker-swap-v2-tests")]
 #[test]
 fn send_and_spend_maker_payment_erc20() {
-    thread::sleep(Duration::from_secs(30));
+    let _guard = SEPOLIA_TESTS_LOCK.lock().unwrap();
+
     let erc20_conf = &sepolia_erc20_dev_conf(&sepolia_erc20_contract_checksum());
     let taker_coin = get_or_create_sepolia_coin(&MM_CTX1, SEPOLIA_TAKER_PRIV, ERC20, erc20_conf, true);
     let maker_coin = get_or_create_sepolia_coin(&MM_CTX, SEPOLIA_MAKER_PRIV, ERC20, erc20_conf, true);

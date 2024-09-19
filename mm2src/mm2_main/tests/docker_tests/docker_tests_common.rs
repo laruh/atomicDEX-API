@@ -77,6 +77,7 @@ lazy_static! {
 lazy_static! {
     pub static ref SEPOLIA_WEB3: Web3<Http> = Web3::new(Http::new(SEPOLIA_RPC_URL).unwrap());
     pub static ref SEPOLIA_NONCE_LOCK: Mutex<()> = Mutex::new(());
+    pub static ref SEPOLIA_TESTS_LOCK: Mutex<()> = Mutex::new(());
 }
 
 pub static mut QICK_TOKEN_ADDRESS: Option<H160Eth> = None;
