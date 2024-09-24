@@ -1,5 +1,5 @@
 use super::{check_decoded_length, validate_from_to_and_status, validate_payment_args, validate_payment_state,
-            EthPaymentType, PrepareTxDataError, ZERO_VALUE};
+            EthPaymentType, PrepareTxDataError, ETH_PLACEHOLDER_ADDRESS, ZERO_VALUE};
 use crate::eth::{decode_contract_call, get_function_input_data, wei_from_big_decimal, EthCoin, EthCoinType,
                  ParseCoinAssocTypes, RefundFundingSecretArgs, RefundTakerPaymentArgs, SendTakerFundingArgs,
                  SignedEthTx, SwapTxTypeWithSecretHash, TakerPaymentStateV2, TransactionErr, ValidateSwapV2TxError,
@@ -247,7 +247,10 @@ impl EthCoin {
         args: RefundTakerPaymentArgs<'_>,
     ) -> Result<SignedEthTx, TransactionErr> {
         let (token_address, gas_limit) = match &self.coin_type {
-            EthCoinType::Eth => (Address::default(), self.gas_limit_v2.taker.eth_taker_refund_timelock),
+            EthCoinType::Eth => (
+                *ETH_PLACEHOLDER_ADDRESS,
+                self.gas_limit_v2.taker.eth_taker_refund_timelock,
+            ),
             EthCoinType::Erc20 {
                 platform: _,
                 token_addr,
@@ -312,7 +315,10 @@ impl EthCoin {
         args: RefundFundingSecretArgs<'_, Self>,
     ) -> Result<SignedEthTx, TransactionErr> {
         let (token_address, gas_limit) = match &self.coin_type {
-            EthCoinType::Eth => (Address::default(), self.gas_limit_v2.taker.eth_taker_refund_secret),
+            EthCoinType::Eth => (
+                *ETH_PLACEHOLDER_ADDRESS,
+                self.gas_limit_v2.taker.eth_taker_refund_secret,
+            ),
             EthCoinType::Erc20 {
                 platform: _,
                 token_addr,
@@ -579,7 +585,7 @@ impl EthCoin {
                     decoded[2].clone(),  // receiver from ethTakerPayment
                     Token::FixedBytes(args.taker_secret_hash.to_vec()),
                     Token::FixedBytes(args.maker_secret_hash.to_vec()),
-                    Token::Address(token_address), // should be zero address Address::default()
+                    Token::Address(token_address), // should be ETH_PLACEHOLDER_ADDRESS
                 ])?
             },
             EthCoinType::Erc20 { .. } => {
@@ -634,7 +640,10 @@ impl EthCoin {
         erc20_func_name: &str,
     ) -> Result<(Address, &Function, Address), TransactionErr> {
         let (func, token_address) = match self.coin_type {
-            EthCoinType::Eth => (try_tx_s!(TAKER_SWAP_V2.function(eth_func_name)), Address::default()),
+            EthCoinType::Eth => (
+                try_tx_s!(TAKER_SWAP_V2.function(eth_func_name)),
+                *ETH_PLACEHOLDER_ADDRESS,
+            ),
             EthCoinType::Erc20 { token_addr, .. } => (try_tx_s!(TAKER_SWAP_V2.function(erc20_func_name)), token_addr),
             EthCoinType::Nft { .. } => {
                 return Err(TransactionErr::ProtocolNotSupported(ERRL!(

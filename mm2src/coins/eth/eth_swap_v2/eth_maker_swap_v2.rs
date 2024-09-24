@@ -1,4 +1,5 @@
-use super::{validate_from_to_and_status, validate_payment_args, EthPaymentType, PrepareTxDataError, ZERO_VALUE};
+use super::{validate_from_to_and_status, validate_payment_args, EthPaymentType, PrepareTxDataError,
+            ETH_PLACEHOLDER_ADDRESS, ZERO_VALUE};
 use crate::coin_errors::{ValidatePaymentError, ValidatePaymentResult};
 use crate::eth::{decode_contract_call, get_function_input_data, wei_from_big_decimal, EthCoin, EthCoinType,
                  MakerPaymentStateV2, SignedEthTx, MAKER_SWAP_V2};
@@ -182,7 +183,10 @@ impl EthCoin {
         args: RefundMakerPaymentTimelockArgs<'_>,
     ) -> Result<SignedEthTx, TransactionErr> {
         let (token_address, gas_limit) = match &self.coin_type {
-            EthCoinType::Eth => (Address::default(), self.gas_limit_v2.maker.eth_maker_refund_timelock),
+            EthCoinType::Eth => (
+                *ETH_PLACEHOLDER_ADDRESS,
+                self.gas_limit_v2.maker.eth_maker_refund_timelock,
+            ),
             EthCoinType::Erc20 {
                 platform: _,
                 token_addr,
@@ -240,7 +244,10 @@ impl EthCoin {
         args: RefundMakerPaymentSecretArgs<'_, Self>,
     ) -> Result<SignedEthTx, TransactionErr> {
         let (token_address, gas_limit) = match &self.coin_type {
-            EthCoinType::Eth => (Address::default(), self.gas_limit_v2.maker.eth_maker_refund_secret),
+            EthCoinType::Eth => (
+                *ETH_PLACEHOLDER_ADDRESS,
+                self.gas_limit_v2.maker.eth_maker_refund_secret,
+            ),
             EthCoinType::Erc20 {
                 platform: _,
                 token_addr,
@@ -289,7 +296,10 @@ impl EthCoin {
         args: SpendMakerPaymentArgs<'_, Self>,
     ) -> Result<SignedEthTx, TransactionErr> {
         let (token_address, gas_limit) = match &self.coin_type {
-            EthCoinType::Eth => (Address::default(), U256::from(self.gas_limit_v2.maker.eth_taker_spend)),
+            EthCoinType::Eth => (
+                *ETH_PLACEHOLDER_ADDRESS,
+                U256::from(self.gas_limit_v2.maker.eth_taker_spend),
+            ),
             EthCoinType::Erc20 {
                 platform: _,
                 token_addr,

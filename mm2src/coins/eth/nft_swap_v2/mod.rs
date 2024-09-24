@@ -6,6 +6,7 @@ use ethkey::public_to_address;
 use futures::compat::Future01CompatExt;
 use mm2_err_handle::prelude::{MapToMmResult, MmError, MmResult};
 use mm2_number::BigDecimal;
+use num_traits::Signed;
 use web3::types::TransactionId;
 
 pub(crate) mod errors;
@@ -580,7 +581,7 @@ fn htlc_params() -> &'static [ethabi::ParamType] {
 
 /// function to check if BigDecimal is a positive integer
 #[inline(always)]
-fn is_positive_integer(amount: &BigDecimal) -> bool { amount == &amount.with_scale(0) && amount > &BigDecimal::from(0) }
+fn is_positive_integer(amount: &BigDecimal) -> bool { amount == &amount.with_scale(0) && amount.is_positive() }
 
 fn validate_payment_args<'a>(
     taker_secret_hash: &'a [u8],
