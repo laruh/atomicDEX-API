@@ -621,7 +621,20 @@ pub fn var(name: &str) -> Result<String, String> {
 #[cfg(target_arch = "wasm32")]
 pub fn var(_name: &str) -> Result<String, String> { ERR!("Environment variable not supported in WASM") }
 
+/// Runs the given future on MM2's executor and waits for the result.
+///
+/// This is compatible with futures 0.1.
+pub fn block_on_f01<F>(f: F) -> Result<F::Item, F::Error>
+where
+    F: Future,
+{
+    block_on(f.compat())
+}
+
 #[cfg(not(target_arch = "wasm32"))]
+/// Runs the given future on MM2's executor and waits for the result.
+///
+/// This is compatible with futures 0.3.
 pub fn block_on<F>(f: F) -> F::Output
 where
     F: Future03,
