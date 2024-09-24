@@ -666,11 +666,20 @@ impl MakerCoinSwapOpsV2 for UtxoStandardCoin {
 
     async fn wait_for_maker_payment_spend(
         &self,
-        _maker_payment: &Self::Tx,
-        _from_block: u64,
-        _wait_until: u64,
+        maker_payment: &Self::Tx,
+        from_block: u64,
+        wait_until: u64,
     ) -> MmResult<Self::Tx, WaitForPaymentSpendError> {
-        todo!()
+        let res = utxo_common::wait_for_output_spend_impl(
+            self.as_ref(),
+            maker_payment,
+            utxo_common::DEFAULT_SWAP_VOUT,
+            from_block,
+            wait_until,
+            10.,
+        )
+        .await?;
+        Ok(res)
     }
 }
 
