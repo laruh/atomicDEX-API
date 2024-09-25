@@ -1603,8 +1603,9 @@ pub fn init_geth_node() {
                 EthAddress::from_str("0x9eb88cd58605d8fb9b14652d6152727f7e95fb4d").unwrap();
             SEPOLIA_ERC20_CONTRACT = EthAddress::from_str("0xF7b5F8E8555EF7A743f24D3E974E23A3C6cB6638").unwrap();
             SEPOLIA_TAKER_SWAP_V2 = EthAddress::from_str("0x7Cc9F2c1c3B797D09B9d1CCd7FDcD2539a4b3874").unwrap();
-            // deploy tx https://sepolia.etherscan.io/tx/0x6f743d79ecb806f5899a6a801083e33eba9e6f10726af0873af9f39883db7f11
-            SEPOLIA_MAKER_SWAP_V2 = EthAddress::from_str("0xf9000589c66Df3573645B59c10aa87594Edc318F").unwrap();
+            // deploy tx https://sepolia.etherscan.io/tx/0x1f9628e6eea4df31621b9434063648f3e4419c2cdb655192cf3740bb20d331ff
+            // https://github.com/KomodoPlatform/etomic-swap/blob/EIP-2930-Ethereum-access-list/contracts/EtomicSwapMakerV2EthConst.sol
+            SEPOLIA_MAKER_SWAP_V2 = EthAddress::from_str("0xD23660d2411f5801F69b7C1b36aCc3957214Bb15").unwrap();
         }
         let alice_passphrase = get_passphrase!(".env.client", "ALICE_PASSPHRASE").unwrap();
         let alice_keypair = key_pair_from_seed(&alice_passphrase).unwrap();
