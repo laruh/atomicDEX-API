@@ -1862,20 +1862,17 @@ impl TakerSwap {
         let wait_fut = self
             .maker_coin
             .wait_for_confirmations(confirm_maker_payment_spend_input);
-        let confirmations = match wait_fut.compat().await {
-            Ok(conf) => conf,
-            Err(err) => {
-                return Ok((Some(TakerSwapCommand::PrepareForTakerPaymentRefund), vec![
-                    TakerSwapEvent::MakerPaymentSpendConfirmFailed(
-                        ERRL!("!wait for maker payment spend confirmations: {}", err).into(),
-                    ),
-                    TakerSwapEvent::TakerPaymentWaitRefundStarted {
-                        wait_until: self.wait_refund_until(),
-                    },
-                ]));
-            },
-        };
-        info!("Maker payment spend confirmed. Confirmation number: {}", confirmations);
+        if let Err(err) = wait_fut.compat().await {
+            return Ok((Some(TakerSwapCommand::PrepareForTakerPaymentRefund), vec![
+                TakerSwapEvent::MakerPaymentSpendConfirmFailed(
+                    ERRL!("!wait for maker payment spend confirmations: {}", err).into(),
+                ),
+                TakerSwapEvent::TakerPaymentWaitRefundStarted {
+                    wait_until: self.wait_refund_until(),
+                },
+            ]));
+        }
+        info!("Maker payment spend confirmed");
         Ok((Some(TakerSwapCommand::Finish), vec![
             TakerSwapEvent::MakerPaymentSpendConfirmed,
         ]))

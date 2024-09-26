@@ -725,10 +725,7 @@ impl MarketCoinOps for SolanaCoin {
         })
     }
 
-    fn wait_for_confirmations(
-        &self,
-        _input: ConfirmPaymentInput,
-    ) -> Box<dyn Future<Item = u64, Error = String> + Send> {
+    fn wait_for_confirmations(&self, _input: ConfirmPaymentInput) -> Box<dyn Future<Item = (), Error = String> + Send> {
         unimplemented!()
     }
 

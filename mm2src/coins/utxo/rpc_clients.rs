@@ -163,7 +163,7 @@ impl UtxoRpcClientEnum {
         requires_notarization: bool,
         wait_until: u64,
         check_every: u64,
-    ) -> Box<dyn Future<Item = u64, Error = String> + Send> {
+    ) -> Box<dyn Future<Item = (), Error = String> + Send> {
         let selfi = self.clone();
         let mut tx_not_found_retries = TX_NOT_FOUND_RETRIES;
         let fut = async move {
@@ -185,7 +185,7 @@ impl UtxoRpcClientEnum {
                             t.rawconfirmations.unwrap_or(t.confirmations)
                         };
                         if tx_confirmations >= confirmations {
-                            return Ok(tx_confirmations as u64);
+                            return Ok(());
                         } else {
                             info!(
                                 "Waiting for tx {:?} confirmations, now {}, required {}, requires_notarization {}",

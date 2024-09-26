@@ -434,7 +434,7 @@ impl MarketCoinOps for TendermintToken {
         })
     }
 
-    fn wait_for_confirmations(&self, input: ConfirmPaymentInput) -> Box<dyn Future<Item = u64, Error = String> + Send> {
+    fn wait_for_confirmations(&self, input: ConfirmPaymentInput) -> Box<dyn Future<Item = (), Error = String> + Send> {
         self.platform_coin.wait_for_confirmations(input)
     }
 

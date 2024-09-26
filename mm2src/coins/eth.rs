@@ -2257,7 +2257,7 @@ impl MarketCoinOps for EthCoin {
         }
     }
 
-    fn wait_for_confirmations(&self, input: ConfirmPaymentInput) -> Box<dyn Future<Item = u64, Error = String> + Send> {
+    fn wait_for_confirmations(&self, input: ConfirmPaymentInput) -> Box<dyn Future<Item = (), Error = String> + Send> {
         macro_rules! update_status_with_error {
             ($status: ident, $error: ident) => {
                 match $error.get_inner() {
@@ -2328,8 +2328,7 @@ impl MarketCoinOps for EthCoin {
                     Ok(conf) => {
                         if conf == confirmed_at {
                             status.append(" Confirmed.");
-                            // Let's avoid risking additional errors by calling `current_block` and instead return required_confirms
-                            break Ok(required_confirms.as_u64());
+                            break Ok(());
                         }
                     },
                     Err(e) => {

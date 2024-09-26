@@ -1120,7 +1120,7 @@ impl MarketCoinOps for LightningCoin {
 
     // Todo: Add waiting for confirmations logic for the case of if the channel is closed and the htlc can be claimed on-chain
     // Todo: The above is postponed and might not be needed after this issue is resolved https://github.com/lightningdevkit/rust-lightning/issues/2017
-    fn wait_for_confirmations(&self, input: ConfirmPaymentInput) -> Box<dyn Future<Item = u64, Error = String> + Send> {
+    fn wait_for_confirmations(&self, input: ConfirmPaymentInput) -> Box<dyn Future<Item = (), Error = String> + Send> {
         let payment_hash = try_f!(payment_hash_from_slice(&input.payment_tx).map_err(|e| e.to_string()));
         let payment_hex = hex::encode(payment_hash.0);
 
@@ -1139,7 +1139,7 @@ impl MarketCoinOps for LightningCoin {
                     Ok(Some(payment)) => {
                         match payment.payment_type {
                             PaymentType::OutboundPayment { .. } => match payment.status {
-                                HTLCStatus::Pending | HTLCStatus::Succeeded => return Ok(1u64),
+                                HTLCStatus::Pending | HTLCStatus::Succeeded => return Ok(()),
                                 HTLCStatus::Claimable => {
                                     return ERR!(
                                         "Payment {} has an invalid status of {} in the db",
@@ -1153,7 +1153,7 @@ impl MarketCoinOps for LightningCoin {
                                 HTLCStatus::Failed => return ERR!("Lightning swap payment {} failed", payment_hex),
                             },
                             PaymentType::InboundPayment => match payment.status {
-                                HTLCStatus::Claimable | HTLCStatus::Succeeded => return Ok(1u64),
+                                HTLCStatus::Claimable | HTLCStatus::Succeeded => return Ok(()),
                                 HTLCStatus::Pending => info!("Payment {} not received yet!", payment_hex),
                                 HTLCStatus::Failed => return ERR!("Lightning swap payment {} failed", payment_hex),
                             },
