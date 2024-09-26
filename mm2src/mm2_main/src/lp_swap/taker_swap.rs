@@ -1855,7 +1855,7 @@ impl TakerSwap {
         let confirm_maker_payment_spend_input = ConfirmPaymentInput {
             payment_tx: self.r().maker_payment_spend.clone().unwrap().tx_hex.0,
             confirmations: std::cmp::min(1, self.r().data.maker_payment_confirmations),
-            requires_nota: self.r().data.maker_payment_requires_nota.unwrap_or(false),
+            requires_nota: false,
             wait_until: self.wait_refund_until(),
             check_every: WAIT_CONFIRM_INTERVAL_SEC,
         };
