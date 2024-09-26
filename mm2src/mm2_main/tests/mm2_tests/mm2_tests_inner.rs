@@ -14,15 +14,15 @@ use mm2_test_helpers::electrums::*;
 use mm2_test_helpers::for_tests::wait_check_stats_swap_status;
 use mm2_test_helpers::for_tests::{account_balance, btc_segwit_conf, btc_with_spv_conf, btc_with_sync_starting_header,
                                   check_recent_swaps, enable_qrc20, enable_utxo_v2_electrum, eth_dev_conf,
-                                  find_metrics_in_json, from_env_file, get_new_address, get_shared_db_id, mm_spat,
-                                  morty_conf, my_balance, rick_conf, sign_message, start_swaps, tbtc_conf,
-                                  tbtc_segwit_conf, tbtc_with_spv_conf, test_qrc20_history_impl, tqrc20_conf,
-                                  verify_message, wait_for_swaps_finish_and_check_status,
-                                  wait_till_history_has_records, MarketMakerIt, Mm2InitPrivKeyPolicy, Mm2TestConf,
-                                  Mm2TestConfForSwap, RaiiDump, DOC_ELECTRUM_ADDRS, ETH_MAINNET_NODE,
-                                  ETH_MAINNET_SWAP_CONTRACT, ETH_SEPOLIA_NODES, ETH_SEPOLIA_SWAP_CONTRACT,
-                                  MARTY_ELECTRUM_ADDRS, MORTY, QRC20_ELECTRUMS, RICK, RICK_ELECTRUM_ADDRS,
-                                  TBTC_ELECTRUMS, T_BCH_ELECTRUMS};
+                                  find_metrics_in_json, from_env_file, get_new_address, get_shared_db_id,
+                                  get_wallet_names, mm_spat, morty_conf, my_balance, rick_conf, sign_message,
+                                  start_swaps, tbtc_conf, tbtc_segwit_conf, tbtc_with_spv_conf,
+                                  test_qrc20_history_impl, tqrc20_conf, verify_message,
+                                  wait_for_swaps_finish_and_check_status, wait_till_history_has_records,
+                                  MarketMakerIt, Mm2InitPrivKeyPolicy, Mm2TestConf, Mm2TestConfForSwap, RaiiDump,
+                                  DOC_ELECTRUM_ADDRS, ETH_MAINNET_NODE, ETH_MAINNET_SWAP_CONTRACT, ETH_SEPOLIA_NODES,
+                                  ETH_SEPOLIA_SWAP_CONTRACT, MARTY_ELECTRUM_ADDRS, MORTY, QRC20_ELECTRUMS, RICK,
+                                  RICK_ELECTRUM_ADDRS, TBTC_ELECTRUMS, T_BCH_ELECTRUMS};
 use mm2_test_helpers::get_passphrase;
 use mm2_test_helpers::structs::*;
 use serde_json::{self as json, json, Value as Json};
@@ -2351,7 +2351,7 @@ fn test_electrum_tx_history() {
         {"coin":"RICK","asset":"RICK","rpcport":8923,"txversion":4,"overwintered":1,"protocol":{"type":"UTXO"}},
     ]);
 
-    let mut mm = MarketMakerIt::start(
+    let mm_bob = MarketMakerIt::start(
         json! ({
             "gui": "nogui",
             "netid": 9998,
@@ -2367,14 +2367,26 @@ fn test_electrum_tx_history() {
         None,
     )
     .unwrap();
+    let (_dump_log, _dump_dashboard) = mm_bob.mm_dump();
+    log!("log path: {}", mm_bob.log_path.display());
+
+    let bob_electrum = block_on(enable_electrum(&mm_bob, "RICK", false, DOC_ELECTRUM_ADDRS));
+    let mut enable_res_bob = HashMap::new();
+    enable_res_bob.insert("RICK", bob_electrum);
+    log!("enable_coins_bob: {:?}", enable_res_bob);
+
+    let mmconf = Mm2TestConf::seednode_with_wallet_name(&coins, "wallet", "pass");
+    let mut mm = MarketMakerIt::start(mmconf.conf, mmconf.rpc_password, None).unwrap();
     let (_dump_log, _dump_dashboard) = mm.mm_dump();
     log!("log path: {}", mm.log_path.display());
 
     // Enable RICK electrum client with tx_history loop.
     let electrum = block_on(enable_electrum(&mm, "RICK", true, DOC_ELECTRUM_ADDRS));
+    log!("enable_coins: {:?}", electrum);
+    let receiving_address = electrum.address;
 
     // Wait till tx_history will not be loaded
-    block_on(mm.wait_for_log(500., |log| log.contains("history has been loaded successfully"))).unwrap();
+    block_on(mm.wait_for_log(5., |log| log.contains("history has been loaded successfully"))).unwrap();
 
     // tx_history is requested every 30 seconds, wait another iteration
     thread::sleep(Duration::from_secs(31));
@@ -2384,16 +2396,13 @@ fn test_electrum_tx_history() {
     assert_eq!(get_tx_history_request_count(&mm), 1);
 
     // make a transaction to change balance
-    let mut enable_res = HashMap::new();
-    enable_res.insert("RICK", electrum);
-    log!("enable_coins: {:?}", enable_res);
     withdraw_and_send(
-        &mm,
+        &mm_bob,
         "RICK",
         None,
-        "RRYmiZSDo3UdHHqj1rLKf8cbJroyv9NxXw",
-        &enable_res,
-        "-0.00001",
+        &receiving_address,
+        &enable_res_bob,
+        "-0.00101",
         0.001,
     );
 
@@ -5807,6 +5816,41 @@ fn test_get_shared_db_id() {
         shared_db_id,
         "'shared_db_id' must be different for different passphrases"
     );
+}
+
+#[test]
+#[cfg(not(target_arch = "wasm32"))]
+fn test_get_wallet_names() {
+    let coins = json!([]);
+
+    // Initialize the first wallet with a specific name
+    let wallet_1 = Mm2TestConf::seednode_with_wallet_name(&coins, "wallet_1", "pass");
+    let mm_wallet_1 = MarketMakerIt::start(wallet_1.conf, wallet_1.rpc_password, None).unwrap();
+
+    // Retrieve and verify the wallet names for the first wallet
+    let get_wallet_names_1 = block_on(get_wallet_names(&mm_wallet_1));
+    assert_eq!(get_wallet_names_1.wallet_names, vec!["wallet_1"]);
+    assert_eq!(get_wallet_names_1.activated_wallet.unwrap(), "wallet_1");
+
+    // Initialize the second wallet with a different name
+    let mut wallet_2 = Mm2TestConf::seednode_with_wallet_name(&coins, "wallet_2", "pass");
+
+    // Set the database directory for the second wallet to the same as the first wallet
+    wallet_2.conf["dbdir"] = mm_wallet_1.folder.join("DB").to_str().unwrap().into();
+
+    // Stop the first wallet before starting the second one
+    block_on(mm_wallet_1.stop()).unwrap();
+
+    // Start the second wallet
+    let mm_wallet_2 = MarketMakerIt::start(wallet_2.conf, wallet_2.rpc_password, None).unwrap();
+
+    // Retrieve and verify the wallet names for the second wallet
+    let get_wallet_names_2 = block_on(get_wallet_names(&mm_wallet_2));
+    assert_eq!(get_wallet_names_2.wallet_names, vec!["wallet_1", "wallet_2"]);
+    assert_eq!(get_wallet_names_2.activated_wallet.unwrap(), "wallet_2");
+
+    // Stop the second wallet
+    block_on(mm_wallet_2.stop()).unwrap();
 }
 
 #[test]
