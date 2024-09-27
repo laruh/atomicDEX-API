@@ -264,6 +264,8 @@ impl TakerSavedSwap {
         if !self.is_finished() {
             return false;
         };
+        let mut maker_payment_spent = false;
+        let mut maker_payment_spend_confirmed_failed = false;
         for event in self.events.iter() {
             match event.event {
                 TakerSwapEvent::StartFailed(_)
@@ -277,8 +279,19 @@ impl TakerSavedSwap {
                 | TakerSwapEvent::MakerPaymentWaitConfirmFailed(_) => {
                     return false;
                 },
+                TakerSwapEvent::MakerPaymentSpent(_) => {
+                    maker_payment_spent = true;
+                },
+                TakerSwapEvent::MakerPaymentSpendConfirmFailed(_) => {
+                    maker_payment_spend_confirmed_failed = true;
+                },
                 _ => (),
             }
+        }
+        // MakerPaymentSpent was the last success event but a new step `MakerPaymentSpendConfirmed` was added after it
+        // For backward compatibility (old saved swaps) we need to check for MakerPaymentSpent and there is no MakerPaymentSpendConfirmFailed
+        if maker_payment_spent && !maker_payment_spend_confirmed_failed {
+            return false;
         }
         true
     }
