@@ -184,7 +184,7 @@ impl TakerSavedEvent {
             TakerSwapEvent::MakerPaymentSpent(_) => Some(TakerSwapCommand::ConfirmMakerPaymentSpend),
             TakerSwapEvent::MakerPaymentSpendConfirmed => Some(TakerSwapCommand::Finish),
             TakerSwapEvent::MakerPaymentSpendConfirmFailed(_) => Some(TakerSwapCommand::PrepareForTakerPaymentRefund),
-            TakerSwapEvent::MakerPaymentSpentByWatcher(_) => Some(TakerSwapCommand::Finish),
+            TakerSwapEvent::MakerPaymentSpentByWatcher(_) => Some(TakerSwapCommand::ConfirmMakerPaymentSpend),
             TakerSwapEvent::MakerPaymentSpendFailed(_) => Some(TakerSwapCommand::PrepareForTakerPaymentRefund),
             TakerSwapEvent::TakerPaymentWaitRefundStarted { .. } => {
                 Some(TakerSwapCommand::PrepareForTakerPaymentRefund)
@@ -265,6 +265,7 @@ impl TakerSavedSwap {
             return false;
         };
         let mut maker_payment_spent = false;
+        let mut maker_payment_spent_by_watcher = false;
         let mut maker_payment_spend_confirmed_failed = false;
         for event in self.events.iter() {
             match event.event {
@@ -275,12 +276,14 @@ impl TakerSavedSwap {
                 | TakerSwapEvent::TakerPaymentRefunded(_)
                 | TakerSwapEvent::TakerPaymentRefundedByWatcher(_)
                 | TakerSwapEvent::MakerPaymentSpendConfirmed
-                | TakerSwapEvent::MakerPaymentSpentByWatcher(_)
                 | TakerSwapEvent::MakerPaymentWaitConfirmFailed(_) => {
                     return false;
                 },
                 TakerSwapEvent::MakerPaymentSpent(_) => {
                     maker_payment_spent = true;
+                },
+                TakerSwapEvent::MakerPaymentSpentByWatcher(_) => {
+                    maker_payment_spent_by_watcher = true;
                 },
                 TakerSwapEvent::MakerPaymentSpendConfirmFailed(_) => {
                     maker_payment_spend_confirmed_failed = true;
@@ -288,11 +291,13 @@ impl TakerSavedSwap {
                 _ => (),
             }
         }
-        // MakerPaymentSpent was the last success event but a new step `MakerPaymentSpendConfirmed` was added after it
-        // For backward compatibility (old saved swaps) we need to check for MakerPaymentSpent and there is no MakerPaymentSpendConfirmFailed
-        if maker_payment_spent && !maker_payment_spend_confirmed_failed {
+        // MakerPaymentSpent or MakerPaymentSpentByWatcher were the last success events but a new step `MakerPaymentSpendConfirmed` was added after them.
+        // For backward compatibility (old saved swaps) we need to check for MakerPaymentSpent or MakerPaymentSpentByWatcher
+        // and if there is no MakerPaymentSpendConfirmFailed.
+        if (maker_payment_spent || maker_payment_spent_by_watcher) && !maker_payment_spend_confirmed_failed {
             return false;
         }
+
         true
     }
 
